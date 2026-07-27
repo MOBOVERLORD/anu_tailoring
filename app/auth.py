@@ -1,16 +1,19 @@
 from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_db
 from app.models import User
+from app.schemas import UserCreate, UserLogin, UserResponse, Token, RefreshTokenRequest
 from app.config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+pwd_context = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
@@ -87,3 +90,65 @@ async def get_current_user(
     if user is None:
         raise credentials_exception
     return user
+
+
+@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def register_user(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.email == user_in.email))
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    hashed_password = hash_password(user_in.password)
+    user = User(
+        full_name=user_in.full_name,
+        email=user_in.email,
+        phone=user_in.phone,
+        hashed_password=hashed_password,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@router.post("/login", response_model=Token)
+async def login_for_access_token(
+    form_data: UserLogin, db: AsyncSession = Depends(get_db)
+):
+    result = await db.execute(select(User).where(User.email == form_data.email))
+    user = result.scalar_one_or_none()
+
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token = create_access_token(data={"sub": str(user.id)})
+    refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    return {"access_token": access_token, "refresh_token": refresh_token}
+
+
+@router.post("/refresh", response_model=Token)
+async def refresh_access_token(
+    refresh_token_request: RefreshTokenRequest, db: AsyncSession = Depends(get_db)
+):
+    user_id = decode_refresh_token(refresh_token_request.refresh_token)
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token - user not found",
+        )
+    
+    access_token = create_access_token(data={"sub": str(user.id)})
+    # Optionally, issue a new refresh token as well, or keep the old one
+    new_refresh_token = create_refresh_token(data={"sub": str(user.id)})
+    return {"access_token": access_token, "refresh_token": new_refresh_token}
+
+
+@router.get("/me", response_model=UserResponse)
+async def read_users_me(current_user: User = Depends(get_current_user)):
+    return current_user

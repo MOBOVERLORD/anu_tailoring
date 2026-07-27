@@ -7,7 +7,7 @@ from app.database import engine, Base, AsyncSessionLocal
 from app.models import User
 from app.config import settings
 from app.auth import hash_password
-from app.routers import auth, designs, measurements, addresses, orders
+from app import auth, designs, measurements, addresses, orders
 
 
 async def init_db_and_seed_admin():
