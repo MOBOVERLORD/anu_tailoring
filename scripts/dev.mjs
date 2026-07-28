@@ -190,17 +190,35 @@ console.log(`
 ============================================================
 `)
 
+console.log("[backend] Starting FastAPI on http://127.0.0.1:8000 ...")
 const backend = spawn(
   localPython,
-  ["-m", "uvicorn", "app.main:app", "--reload", "--host", "127.0.0.1", "--port", "8000"],
+  [
+    "-u",
+    "-m",
+    "uvicorn",
+    "app.main:app",
+    "--reload",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "8000",
+    "--log-level",
+    "info",
+    "--access-log",
+  ],
   {
     cwd: projectRoot,
-    env: process.env,
-    stdio: "inherit",
+    env: {
+      ...process.env,
+      PYTHONUNBUFFERED: "1",
+    },
+    stdio: ["inherit", "pipe", "pipe"],
     shell: false,
   },
 )
 
+console.log("[frontend] Starting Vite on http://127.0.0.1:5173 ...")
 const frontendCommand = prepareCommand(
   npmCommand,
   ["run", "dev", "--", "--host", "127.0.0.1", "--port", "5173"],
@@ -211,12 +229,32 @@ const frontend = spawn(
   {
     cwd: frontendDirectory,
     env: process.env,
-    stdio: "inherit",
+    stdio: ["inherit", "pipe", "pipe"],
     shell: false,
   },
 )
 
 let stopping = false
+
+function prefixOutput(stream, label, destination) {
+  let remainder = ""
+  stream.setEncoding("utf8")
+  stream.on("data", (chunk) => {
+    const lines = `${remainder}${chunk}`.split(/\r?\n/)
+    remainder = lines.pop() || ""
+    for (const line of lines) {
+      if (line.length > 0) destination.write(`[${label}] ${line}\n`)
+    }
+  })
+  stream.on("end", () => {
+    if (remainder.length > 0) destination.write(`[${label}] ${remainder}\n`)
+  })
+}
+
+prefixOutput(backend.stdout, "backend", process.stdout)
+prefixOutput(backend.stderr, "backend", process.stderr)
+prefixOutput(frontend.stdout, "frontend", process.stdout)
+prefixOutput(frontend.stderr, "frontend", process.stderr)
 
 function shutdown(exitCode = 0) {
   if (stopping) return

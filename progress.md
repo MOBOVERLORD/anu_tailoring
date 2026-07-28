@@ -44,6 +44,8 @@ The initial customer account experience is implemented across the React frontend
   - `README.md` documents combined and separate startup steps.
   - Windows `.cmd` executables are launched through `cmd.exe` to avoid Node
     `spawnSync ... EINVAL` errors for `npm.cmd` and `gcloud.cmd`.
+  - Combined development logs are explicitly streamed with `[backend]` and
+    `[frontend]` prefixes; FastAPI access logging and unbuffered output are enabled.
 - GCP deployment groundwork is included:
   - A multi-stage `Dockerfile` builds React and serves it through FastAPI.
   - Production uses Cloud Run's injected `PORT` and one public container.
