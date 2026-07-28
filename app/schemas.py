@@ -1,15 +1,43 @@
-from pydantic import BaseModel, EmailStr, field_validator
-from typing import Optional, List
+from pydantic import BaseModel, EmailStr, Field, field_validator
+from typing import Dict, Optional, List
 from datetime import datetime
+import re
 from app.models import OrderStatus
+
+
+def normalize_phone_number(value: str) -> str:
+    digits = re.sub(r"\D", "", value)
+    if digits.startswith("0091") and len(digits) == 14:
+        digits = digits[4:]
+    elif digits.startswith("91") and len(digits) == 12:
+        digits = digits[2:]
+
+    if not 10 <= len(digits) <= 15:
+        raise ValueError("Enter a valid phone number with 10 to 15 digits")
+    return digits
 
 
 # --- Auth Schemas ---
 class UserCreate(BaseModel):
-    full_name: str
+    full_name: str = Field(min_length=2, max_length=100)
     email: EmailStr
     password: str
-    phone: Optional[str] = None
+    phone: str
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: EmailStr) -> str:
+        return str(v).strip().lower()
+
+    @field_validator("full_name")
+    @classmethod
+    def normalize_name(cls, v: str) -> str:
+        return " ".join(v.split())
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_phone(cls, v: str) -> str:
+        return normalize_phone_number(v)
 
     @field_validator("password")
     @classmethod
@@ -28,12 +56,18 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: EmailStr) -> str:
+        return str(v).strip().lower()
+
 
 class UserResponse(BaseModel):
     id: int
     full_name: str
     email: EmailStr
     phone: Optional[str] = None
+    location: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -50,11 +84,31 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
 
+class UserUpdate(BaseModel):
+    full_name: str = Field(min_length=2, max_length=100)
+    phone: Optional[str] = None
+    location: Optional[str] = Field(default=None, max_length=150)
+
+    @field_validator("full_name")
+    @classmethod
+    def normalize_name(cls, v: str) -> str:
+        return " ".join(v.split())
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_phone(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not v.strip():
+            return None
+        return normalize_phone_number(v)
+
+
 # --- Measurement Profile Schemas ---
 class MeasurementProfileCreate(BaseModel):
-    profile_name: str
+    profile_name: str = Field(min_length=2, max_length=50)
     gender: str
+    garment_type: str = "general"
     unit: Optional[str] = "inches"
+    measurements: Dict[str, float] = Field(default_factory=dict)
     chest: Optional[float] = None
     waist: Optional[float] = None
     hips: Optional[float] = None
@@ -64,6 +118,32 @@ class MeasurementProfileCreate(BaseModel):
     neck: Optional[float] = None
     height: Optional[float] = None
     notes: Optional[str] = None
+
+    @field_validator("gender")
+    @classmethod
+    def valid_gender(cls, v: str) -> str:
+        if v not in {"women", "men"}:
+            raise ValueError("Gender must be women or men")
+        return v
+
+    @field_validator("unit")
+    @classmethod
+    def valid_unit(cls, v: Optional[str]) -> str:
+        if v not in {"inches", "cm"}:
+            raise ValueError("Unit must be inches or cm")
+        return v
+
+    @field_validator("measurements")
+    @classmethod
+    def valid_measurements(cls, values: Dict[str, float]) -> Dict[str, float]:
+        if len(values) > 40:
+            raise ValueError("A measurement profile can contain at most 40 values")
+        for key, value in values.items():
+            if not key or len(key) > 50:
+                raise ValueError("Measurement names must be between 1 and 50 characters")
+            if not 0 < value <= 300:
+                raise ValueError(f"{key} looks out of realistic range")
+        return values
 
     @field_validator(
         "chest", "waist", "hips", "shoulder_width",

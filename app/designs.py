@@ -27,14 +27,6 @@ async def get_designs(
     return result.scalars().all()
 
 
-@router.get("/{design_id}", response_model=DesignResponse)
-async def get_design(design_id: int, db: AsyncSession = Depends(get_db)):
-    design = await db.get(Design, design_id)
-    if not design:
-        raise HTTPException(status_code=404, detail="Design not found")
-    return design
-
-
 @router.post("/{design_id}/like", status_code=204)
 async def like_design(
     design_id: int,
@@ -84,3 +76,11 @@ async def get_my_liked_designs(
     )
     user = result.scalar_one()
     return user.liked_designs
+
+
+@router.get("/{design_id}", response_model=DesignResponse)
+async def get_design(design_id: int, db: AsyncSession = Depends(get_db)):
+    design = await db.get(Design, design_id)
+    if not design:
+        raise HTTPException(status_code=404, detail="Design not found")
+    return design

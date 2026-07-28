@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import EmailStr
+from typing import Optional
 
 
 class Settings(BaseSettings):
@@ -9,13 +10,30 @@ class Settings(BaseSettings):
 
     # Database Settings
     POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str
+    POSTGRES_PASSWORD: Optional[str] = None
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_PORT: str = "5432"
     POSTGRES_DB: str = "tailor_db"
+    # Set this in production (preferably from Secret Manager) to support
+    # managed databases and Cloud SQL Unix sockets.
+    DATABASE_URL: Optional[str] = None
 
     @property
-    def DATABASE_URL(self) -> str:
+    def database_url(self) -> str:
+        if self.DATABASE_URL:
+            if self.DATABASE_URL.startswith("postgres://"):
+                return self.DATABASE_URL.replace(
+                    "postgres://", "postgresql+asyncpg://", 1
+                )
+            if self.DATABASE_URL.startswith("postgresql://"):
+                return self.DATABASE_URL.replace(
+                    "postgresql://", "postgresql+asyncpg://", 1
+                )
+            return self.DATABASE_URL
+        if not self.POSTGRES_PASSWORD:
+            raise ValueError(
+                "Set DATABASE_URL or POSTGRES_PASSWORD before starting the API"
+            )
         return (
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_SERVER}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
@@ -32,11 +50,12 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+    SERVE_FRONTEND: bool = False
 
     # Admin Account Initial Credentials
     ADMIN_NAME: str = "System Admin"
-    ADMIN_EMAIL: EmailStr
-    ADMIN_PASSWORD: str
+    ADMIN_EMAIL: Optional[EmailStr] = None
+    ADMIN_PASSWORD: Optional[str] = None
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

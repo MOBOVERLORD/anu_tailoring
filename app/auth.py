@@ -4,11 +4,19 @@ from passlib.context import CryptContext
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
 from app.models import User
-from app.schemas import UserCreate, UserLogin, UserResponse, Token, RefreshTokenRequest
+from app.schemas import (
+    UserCreate,
+    UserLogin,
+    UserResponse,
+    UserUpdate,
+    Token,
+    RefreshTokenRequest,
+)
 from app.config import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -94,9 +102,15 @@ async def get_current_user(
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register_user(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == user_in.email))
+    result = await db.execute(
+        select(User).where(func.lower(User.email) == str(user_in.email).lower())
+    )
     if result.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Email already registered")
+        raise HTTPException(status_code=409, detail="Email is already registered")
+
+    result = await db.execute(select(User).where(User.phone == user_in.phone))
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Phone number is already registered")
 
     hashed_password = hash_password(user_in.password)
     user = User(
@@ -106,7 +120,14 @@ async def register_user(user_in: UserCreate, db: AsyncSession = Depends(get_db))
         hashed_password=hashed_password,
     )
     db.add(user)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Email or phone number is already registered",
+        )
     await db.refresh(user)
     return user
 
@@ -115,7 +136,9 @@ async def register_user(user_in: UserCreate, db: AsyncSession = Depends(get_db))
 async def login_for_access_token(
     form_data: UserLogin, db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(User).where(User.email == form_data.email))
+    result = await db.execute(
+        select(User).where(func.lower(User.email) == str(form_data.email).lower())
+    )
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(form_data.password, user.hashed_password):
@@ -151,4 +174,38 @@ async def refresh_access_token(
 
 @router.get("/me", response_model=UserResponse)
 async def read_users_me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+
+@router.put("/me", response_model=UserResponse)
+async def update_users_me(
+    user_in: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if user_in.phone:
+        result = await db.execute(
+            select(User).where(
+                User.phone == user_in.phone,
+                User.id != current_user.id,
+            )
+        )
+        if result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=409,
+                detail="Phone number is already registered",
+            )
+
+    current_user.full_name = user_in.full_name.strip()
+    current_user.phone = user_in.phone
+    current_user.location = user_in.location.strip() if user_in.location else None
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Phone number is already registered",
+        )
+    await db.refresh(current_user)
     return current_user

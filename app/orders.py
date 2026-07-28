@@ -30,7 +30,9 @@ def snapshot_measurements(profile: MeasurementProfile) -> dict:
     return {
         "profile_name": profile.profile_name,
         "gender": profile.gender,
+        "garment_type": profile.garment_type,
         "unit": profile.unit,
+        "measurements": profile.measurements,
         "chest": profile.chest,
         "waist": profile.waist,
         "hips": profile.hips,

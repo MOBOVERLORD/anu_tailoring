@@ -40,7 +40,10 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     full_name: Mapped[str] = mapped_column(String(100))
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
-    phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True, unique=True, index=True
+    )
+    location: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
     hashed_password: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -65,7 +68,9 @@ class MeasurementProfile(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     profile_name: Mapped[str] = mapped_column(String(50))
     gender: Mapped[str] = mapped_column(String(20))
+    garment_type: Mapped[str] = mapped_column(String(50), default="general")
     unit: Mapped[str] = mapped_column(String(10), default="inches")
+    measurements: Mapped[dict] = mapped_column(JSONB, default=dict)
 
     chest: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     waist: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
