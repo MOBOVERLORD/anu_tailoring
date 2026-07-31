@@ -52,6 +52,14 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     SERVE_FRONTEND: bool = False
 
+    # Google Cloud Storage for durable design media.
+    GCS_BUCKET_NAME: Optional[str] = None
+    # Optional locally: ADC impersonates this service account for GCS operations.
+    # Cloud Run derives its attached identity.
+    GCS_SIGNING_SERVICE_ACCOUNT: Optional[EmailStr] = None
+    MAX_DESIGN_IMAGE_MB: int = 2
+    VENDOR_CONTACT_EMAIL: str = "vendors@anutailoring.com"
+
     # Admin Account Initial Credentials
     ADMIN_NAME: str = "System Admin"
     ADMIN_EMAIL: Optional[EmailStr] = None

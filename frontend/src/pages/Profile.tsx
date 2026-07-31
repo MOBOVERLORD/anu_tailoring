@@ -21,20 +21,21 @@ import { api } from "@/lib/api"
 import type {
   DeliveryAddress,
   DeliveryAddressInput,
+  MeasurementCategory,
   MeasurementProfile,
   MeasurementProfileInput,
   UserProfile,
 } from "@/types/api"
 
 type Section = "details" | "measurements" | "addresses"
-type Gender = "women" | "men"
+type Gender = "women" | "men" | "unisex" | "kids"
 
 interface GarmentOption {
   value: string
   label: string
 }
 
-const GARMENTS: Record<Gender, GarmentOption[]> = {
+const GARMENTS: Record<"women" | "men", GarmentOption[]> = {
   women: [
     { value: "saree_blouse", label: "Saree blouse" },
     { value: "salwar_kameez", label: "Salwar / kameez" },
@@ -101,16 +102,20 @@ const emptyAddress: DeliveryAddressInput = {
 }
 
 function MeasurementForm({
+  categories,
   initial,
   onCancel,
   onSave,
 }: {
+  categories: MeasurementCategory[]
   initial?: MeasurementProfile
   onCancel: () => void
   onSave: (value: MeasurementProfileInput) => Promise<void>
 }) {
-  const [gender, setGender] = useState<Gender>(initial?.gender || "women")
-  const [garmentType, setGarmentType] = useState(initial?.garment_type || "saree_blouse")
+  const initialGender = initial?.gender || categories[0]?.gender || "women"
+  const [gender, setGender] = useState<Gender>(initialGender)
+  const [garmentType, setGarmentType] = useState(initial?.garment_type || categories.find((category) => category.gender === initialGender)?.garment_type || "general")
+  const [standardSize, setStandardSize] = useState(initial?.standard_size || "")
   const [profileName, setProfileName] = useState(initial?.profile_name || "")
   const [unit, setUnit] = useState<"inches" | "cm">(initial?.unit || "inches")
   const [values, setValues] = useState<Record<string, string>>(
@@ -119,15 +124,29 @@ function MeasurementForm({
   const [notes, setNotes] = useState(initial?.notes || "")
   const [saving, setSaving] = useState(false)
 
-  const fields = MEASUREMENT_FIELDS[garmentType] || []
+  const selectedCategory = categories.find((category) => category.garment_type === garmentType)
+  const genderCategories = categories.filter((category) => category.gender === gender)
+  const availableCategories = selectedCategory && !genderCategories.some((category) => category.id === selectedCategory.id)
+    ? [selectedCategory, ...genderCategories]
+    : genderCategories
+  const fields = selectedCategory?.measurement_fields || (MEASUREMENT_FIELDS[garmentType] || []).map((key) => ({ key, label: FIELD_LABELS[key] || key }))
   const changeGender = (value: Gender) => {
     setGender(value)
-    setGarmentType(GARMENTS[value][0].value)
+    setGarmentType(categories.find((category) => category.gender === value)?.garment_type || "general")
+    setStandardSize("")
     setValues({})
   }
   const changeGarment = (value: string) => {
     setGarmentType(value)
+    setStandardSize("")
     setValues({})
+  }
+
+  const changeStandardSize = (value: string) => {
+    setStandardSize(value)
+    if (value && selectedCategory?.standard_sizes[value]) {
+      setValues(Object.fromEntries(Object.entries(selectedCategory.standard_sizes[value]).map(([key, measurement]) => [key, String(measurement)])))
+    }
   }
 
   const submit = async (event: FormEvent) => {
@@ -143,6 +162,7 @@ function MeasurementForm({
         profile_name: profileName,
         gender,
         garment_type: garmentType,
+        standard_size: standardSize || null,
         unit,
         measurements,
         notes: notes || null,
@@ -177,9 +197,9 @@ function MeasurementForm({
       <div className="field">
         <span className="field-label">For</span>
         <div className="segmented-control fit-content">
-          {(["women", "men"] as Gender[]).map((value) => (
+          {(["women", "men", "unisex", "kids"] as Gender[]).filter((value) => categories.some((category) => category.gender === value)).map((value) => (
             <button className={gender === value ? "active" : ""} key={value} onClick={() => changeGender(value)} type="button">
-              {value === "women" ? "Women" : "Men"}
+              {value[0].toUpperCase() + value.slice(1)}
             </button>
           ))}
         </div>
@@ -187,27 +207,37 @@ function MeasurementForm({
       <div className="field">
         <label htmlFor="garment-type">Garment</label>
         <select id="garment-type" onChange={(event) => changeGarment(event.target.value)} value={garmentType}>
-          {GARMENTS[gender].map((garment) => <option key={garment.value} value={garment.value}>{garment.label}</option>)}
+          {availableCategories.map((category) => <option key={category.id} value={category.garment_type}>{category.name}</option>)}
         </select>
       </div>
+      {selectedCategory && Object.keys(selectedCategory.standard_sizes).length > 0 && (
+        <div className="field">
+          <label htmlFor="standard-size">Standard size <small>optional starting point</small></label>
+          <select className="select-control" id="standard-size" onChange={(event) => changeStandardSize(event.target.value)} value={standardSize}>
+            <option value="">Custom measurements</option>
+            {Object.keys(selectedCategory.standard_sizes).map((size) => <option key={size} value={size}>{size}</option>)}
+          </select>
+          <small>Choosing a size prefills the configured values. You can adjust every measurement.</small>
+        </div>
+      )}
       <div className="measurement-tip">
         <Ruler size={18} />
         <p>Measure close to the body without pulling the tape tight. Use the same unit throughout.</p>
       </div>
       <div className="measurement-input-grid">
         {fields.map((field) => (
-          <div className="field" key={field}>
-            <label htmlFor={`measure-${field}`}>{FIELD_LABELS[field]}</label>
+          <div className="field" key={field.key}>
+            <label htmlFor={`measure-${field.key}`}>{field.label}</label>
             <div className="unit-input">
               <input
-                id={`measure-${field}`}
+                id={`measure-${field.key}`}
                 inputMode="decimal"
                 min="0.1"
-                onChange={(event) => setValues((current) => ({ ...current, [field]: event.target.value }))}
+                onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))}
                 placeholder="—"
                 step="0.1"
                 type="number"
-                value={values[field] || ""}
+                value={values[field.key] || ""}
               />
               <span>{unit === "inches" ? "in" : "cm"}</span>
             </div>
@@ -307,6 +337,7 @@ const Profile = () => {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [profileDraft, setProfileDraft] = useState({ full_name: "", phone: "", location: "" })
   const [measurements, setMeasurements] = useState<MeasurementProfile[]>([])
+  const [categories, setCategories] = useState<MeasurementCategory[]>([])
   const [addresses, setAddresses] = useState<DeliveryAddress[]>([])
   const [measurementDialog, setMeasurementDialog] = useState<MeasurementProfile | "new" | null>(null)
   const [addressDialog, setAddressDialog] = useState<DeliveryAddress | "new" | null>(null)
@@ -319,8 +350,9 @@ const Profile = () => {
       api<UserProfile>("/api/auth/me"),
       api<MeasurementProfile[]>("/api/measurements"),
       api<DeliveryAddress[]>("/api/addresses"),
+      api<MeasurementCategory[]>("/api/measurements/categories"),
     ])
-      .then(([user, userMeasurements, userAddresses]) => {
+      .then(([user, userMeasurements, userAddresses, measurementCategories]) => {
         setProfile(user)
         setProfileDraft({
           full_name: user.full_name,
@@ -329,6 +361,7 @@ const Profile = () => {
         })
         setMeasurements(userMeasurements)
         setAddresses(userAddresses)
+        setCategories(measurementCategories)
       })
       .catch((error: Error) => {
         toast.error(error.message)
@@ -447,11 +480,17 @@ const Profile = () => {
 
   return (
     <div className="page profile-page">
-      <div className="profile-title">
-        <p className="eyebrow"><CircleUserRound size={15} /> Your account</p>
-        <h1>Profile & settings</h1>
-        <p>Keep your details, perfect fits, and delivery locations up to date.</p>
-      </div>
+      <section className="profile-title profile-hero">
+        <div>
+          <p className="eyebrow"><CircleUserRound size={15} /> Profile & settings</p>
+          <h1>Your tailoring profile</h1>
+          <p>Keep the contact, fit, and delivery information used for your made-to-measure orders in one place.</p>
+        </div>
+        <div className="profile-quick-stats" aria-label="Profile summary">
+          <span><strong>{measurements.length}</strong><small>Saved fits</small></span>
+          <span><strong>{addresses.length}</strong><small>Addresses</small></span>
+        </div>
+      </section>
       <div className="profile-layout">
         <aside className="profile-sidebar">
           <div className="profile-summary">
@@ -476,12 +515,12 @@ const Profile = () => {
           {section === "details" && (
             <>
               <div className="section-heading">
-                <div><p className="section-kicker">Account</p><h2>Personal details</h2><p>How we identify and contact you.</p></div>
+                <div><p className="section-kicker">Account identity</p><h2>Contact details</h2><p>Used for account communication and tailoring updates.</p></div>
               </div>
               <form className="profile-form" onSubmit={saveProfile}>
                 <div className="profile-avatar-row">
                   <span className="avatar xxlarge">{initials}</span>
-                  <div><strong>Your profile</strong><p>Your initials update automatically from your name.</p></div>
+                  <div><strong>{profile.full_name}</strong><p>{profile.role.replaceAll("_", " ")} account · joined {new Date(profile.created_at).toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</p></div>
                 </div>
                 <div className="form-grid">
                   <div className="field">
@@ -515,13 +554,13 @@ const Profile = () => {
           {section === "measurements" && (
             <>
               <div className="section-heading">
-                <div><p className="section-kicker">Perfect fit</p><h2>Measurement profiles</h2><p>Save separate fits for yourself, family, or different garments.</p></div>
+                <div><p className="section-kicker">Made-to-measure</p><h2>Saved fits</h2><p>Keep a separate, garment-specific fit for yourself or each family member.</p></div>
                 <button className="button button-primary" onClick={() => setMeasurementDialog("new")} type="button"><Plus size={17} /> Add measurements</button>
               </div>
               {measurements.length ? (
                 <div className="record-grid">
                   {measurements.map((item) => {
-                    const garmentLabel = [...GARMENTS.women, ...GARMENTS.men].find((garment) => garment.value === item.garment_type)?.label || item.garment_type
+                    const garmentLabel = categories.find((category) => category.garment_type === item.garment_type)?.name || [...GARMENTS.women, ...GARMENTS.men].find((garment) => garment.value === item.garment_type)?.label || item.garment_type
                     const entries = Object.entries(item.measurements || {})
                     return (
                       <article className="record-card" key={item.id}>
@@ -558,7 +597,7 @@ const Profile = () => {
           {section === "addresses" && (
             <>
               <div className="section-heading">
-                <div><p className="section-kicker">Delivery</p><h2>Saved addresses</h2><p>Add home, work, or family delivery locations.</p></div>
+                <div><p className="section-kicker">Delivery book</p><h2>Saved addresses</h2><p>Choose where completed garments should be delivered.</p></div>
                 <button className="button button-primary" onClick={() => setAddressDialog("new")} type="button"><Plus size={17} /> Add address</button>
               </div>
               {addresses.length ? (
@@ -600,6 +639,7 @@ const Profile = () => {
           title={measurementDialog === "new" ? "Add measurement profile" : "Edit measurement profile"}
         >
           <MeasurementForm
+            categories={categories}
             initial={measurementDialog === "new" ? undefined : measurementDialog}
             onCancel={() => setMeasurementDialog(null)}
             onSave={saveMeasurement}

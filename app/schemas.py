@@ -2,7 +2,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Dict, Optional, List
 from datetime import datetime
 import re
-from app.models import OrderStatus
+from app.models import DesignStatus, OrderStatus
 
 
 def normalize_phone_number(value: str) -> str:
@@ -68,6 +68,8 @@ class UserResponse(BaseModel):
     email: EmailStr
     phone: Optional[str] = None
     location: Optional[str] = None
+    role: str
+    is_active: bool
     created_at: datetime
 
     class Config:
@@ -102,11 +104,20 @@ class UserUpdate(BaseModel):
         return normalize_phone_number(v)
 
 
+class AdminUserUpdate(UserUpdate):
+    pass
+
+
+class UserStatusUpdate(BaseModel):
+    is_active: bool
+
+
 # --- Measurement Profile Schemas ---
 class MeasurementProfileCreate(BaseModel):
     profile_name: str = Field(min_length=2, max_length=50)
     gender: str
     garment_type: str = "general"
+    standard_size: Optional[str] = Field(default=None, max_length=30)
     unit: Optional[str] = "inches"
     measurements: Dict[str, float] = Field(default_factory=dict)
     chest: Optional[float] = None
@@ -122,8 +133,8 @@ class MeasurementProfileCreate(BaseModel):
     @field_validator("gender")
     @classmethod
     def valid_gender(cls, v: str) -> str:
-        if v not in {"women", "men"}:
-            raise ValueError("Gender must be women or men")
+        if v not in {"women", "men", "unisex", "kids"}:
+            raise ValueError("Gender must be women, men, unisex, or kids")
         return v
 
     @field_validator("unit")
@@ -166,7 +177,95 @@ class MeasurementProfileResponse(MeasurementProfileCreate):
         from_attributes = True
 
 
+class MeasurementFieldDefinition(BaseModel):
+    key: str = Field(min_length=1, max_length=50, pattern=r"^[a-z][a-z0-9_]*$")
+    label: str = Field(min_length=1, max_length=100)
+
+
+class MeasurementCategoryCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=100)
+    garment_type: str = Field(min_length=2, max_length=50, pattern=r"^[a-z][a-z0-9_]*$")
+    gender: str
+    measurement_fields: List[MeasurementFieldDefinition] = Field(min_length=1, max_length=40)
+    standard_sizes: Dict[str, Dict[str, float]] = Field(default_factory=dict)
+    is_active: bool = True
+    sort_order: int = Field(default=0, ge=0, le=10_000)
+
+    @field_validator("gender")
+    @classmethod
+    def valid_category_gender(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        if normalized not in {"women", "men", "unisex", "kids"}:
+            raise ValueError("Gender must be women, men, unisex, or kids")
+        return normalized
+
+    @field_validator("name", "garment_type")
+    @classmethod
+    def normalize_category_text(cls, v: str) -> str:
+        return v.strip()
+
+    @field_validator("standard_sizes")
+    @classmethod
+    def valid_standard_sizes(cls, sizes: Dict[str, Dict[str, float]]) -> Dict[str, Dict[str, float]]:
+        if len(sizes) > 20:
+            raise ValueError("A category can contain at most 20 standard sizes")
+        for size_name, values in sizes.items():
+            if not size_name.strip() or len(size_name) > 30:
+                raise ValueError("Size names must be between 1 and 30 characters")
+            for field, value in values.items():
+                if not field or not 0 < value <= 300:
+                    raise ValueError(f"Invalid measurement for {size_name}: {field}")
+        return sizes
+
+
+class MeasurementCategoryResponse(MeasurementCategoryCreate):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # --- Design Schemas ---
+class DesignCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=150)
+    description: str = Field(min_length=10, max_length=3000)
+    category: str
+    garment_type: str = Field(min_length=2, max_length=50)
+    base_price: float = Field(gt=0, le=1_000_000)
+
+    @field_validator("category")
+    @classmethod
+    def valid_category(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        if normalized not in {"men", "women", "unisex", "kids"}:
+            raise ValueError("Category must be men, women, unisex, or kids")
+        return normalized
+
+    @field_validator("title", "description", "garment_type")
+    @classmethod
+    def normalize_design_text(cls, v: str) -> str:
+        return v.strip()
+
+
+class DesignUpdate(DesignCreate):
+    pass
+
+
+class DesignImageResponse(BaseModel):
+    id: int
+    original_filename: str
+    content_type: str
+    size_bytes: Optional[int] = None
+    sort_order: int
+    upload_status: str
+    url: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class DesignResponse(BaseModel):
     id: int
     title: str
@@ -174,10 +273,58 @@ class DesignResponse(BaseModel):
     category: str
     garment_type: str
     base_price: float
-    image_url: str
+    image_url: Optional[str] = None
+    vendor_id: Optional[int] = None
+    vendor_name: Optional[str] = None
+    status: str
+    rejection_comment: Optional[str] = None
+    images: List[DesignImageResponse] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+
+class DesignReviewRequest(BaseModel):
+    decision: str
+    comment: Optional[str] = Field(default=None, max_length=2000)
+
+    @field_validator("decision")
+    @classmethod
+    def valid_decision(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        if normalized not in {
+            DesignStatus.APPROVED.value,
+            DesignStatus.REJECTED.value,
+        }:
+            raise ValueError("Decision must be approved or rejected")
+        return normalized
+
+
+class VendorSummaryResponse(BaseModel):
+    draft: int = 0
+    submitted: int = 0
+    approved: int = 0
+    rejected: int = 0
+
+
+class NotificationResponse(BaseModel):
+    id: int
+    title: str
+    message: str
+    notification_type: str
+    link: Optional[str] = None
+    read_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class NotificationListResponse(BaseModel):
+    items: List[NotificationResponse]
+    unread_count: int
 
 
 # --- Delivery Address Schemas ---
@@ -229,6 +376,8 @@ class OrderItemResponse(BaseModel):
     design: DesignResponse
     measurement_profile: MeasurementProfileResponse
     fabric_choice: Optional[str]
+    custom_instructions: Optional[str]
+    measurement_snapshot: Optional[dict]
     price: float
 
     class Config:
@@ -241,7 +390,14 @@ class OrderResponse(BaseModel):
     status: OrderStatus
     tracking_number: Optional[str]
     created_at: datetime
+    customer: UserResponse
+    delivery_address: DeliveryAddressResponse
     order_items: List[OrderItemResponse]
 
     class Config:
         from_attributes = True
+
+
+class OrderStatusUpdate(BaseModel):
+    status: OrderStatus
+    tracking_number: Optional[str] = Field(default=None, max_length=100)

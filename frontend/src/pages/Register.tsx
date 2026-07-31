@@ -88,6 +88,10 @@ const Register = () => {
             {submitting ? "Creating account…" : "Create account"} <ArrowRight size={18} />
           </button>
         </form>
+        <p className="vendor-contact">
+          Are you a tailoring vendor? Vendor accounts are reviewed separately. Reach us at{" "}
+          <a href="mailto:vendors@anutailoring.com">vendors@anutailoring.com</a>.
+        </p>
       </div>
     </div>
   )

@@ -39,11 +39,15 @@ Usage:
   deploy-gcp.cmd [additional gcloud run deploy flags]
   npm.cmd run deploy:gcp -- [additional flags]
 
+Required environment variables:
+  GCP_DESIGN_BUCKET      Private design-image bucket name
+
 Optional environment variables:
   GCP_PROJECT            Google Cloud project ID; defaults to gcloud config
   GCP_REGION             Cloud Run region; defaults to asia-south1
   GCP_SERVICE            Service name; defaults to anu-tailoring
   GCP_CLOUD_SQL_INSTANCE project:region:instance Cloud SQL connection name
+  GCP_SERVICE_ACCOUNT    Cloud Run runtime service account email
 
 Examples:
   set GCP_PROJECT=my-project
@@ -68,6 +72,11 @@ if (!project || project === "(unset)") {
   fail("No GCP project is selected. Set GCP_PROJECT or run “gcloud config set project PROJECT_ID”.")
 }
 
+const designBucket = process.env.GCP_DESIGN_BUCKET
+if (!designBucket) {
+  fail("GCP_DESIGN_BUCKET is required. Set it to the private design-image bucket name before deploying.")
+}
+
 const deployArguments = [
   "run",
   "deploy",
@@ -82,7 +91,7 @@ const deployArguments = [
   "--port",
   "8080",
   "--update-env-vars",
-  "ENVIRONMENT=production,SERVE_FRONTEND=true",
+  `ENVIRONMENT=production,SERVE_FRONTEND=true,GCS_BUCKET_NAME=${designBucket}`,
 ]
 
 if (process.env.GCP_CLOUD_SQL_INSTANCE) {
@@ -90,6 +99,10 @@ if (process.env.GCP_CLOUD_SQL_INSTANCE) {
     "--add-cloudsql-instances",
     process.env.GCP_CLOUD_SQL_INSTANCE,
   )
+}
+
+if (process.env.GCP_SERVICE_ACCOUNT) {
+  deployArguments.push("--service-account", process.env.GCP_SERVICE_ACCOUNT)
 }
 
 deployArguments.push(...extraArguments)

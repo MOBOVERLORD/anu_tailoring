@@ -1,10 +1,70 @@
 # Anu Tailoring — Progress
 
-Last updated: 2026-07-28
+Last updated: 2026-07-31
 
 ## Current milestone
 
-The initial customer account experience is implemented across the React frontend and FastAPI backend.
+The first multi-vendor design publishing workflow is implemented across the
+React frontend, FastAPI backend, PostgreSQL, and Google Cloud Storage.
+
+### Multi-vendor marketplace milestone (2026-07-31)
+
+- Added `customer`, `vendor`, `admin`, and `super_admin` roles.
+  - Public registration always creates customers.
+  - The configured seeded account is promoted to super admin on startup.
+  - Admins create vendor accounts after verification; email and phone uniqueness
+    and password-strength rules are reused.
+- Added vendor-owned design lifecycle: `draft`, `submitted`, `approved`, and
+  `rejected`.
+- Added a responsive Vendor Workspace:
+  - Create and edit design details.
+  - Upload 1–10 JPEG, PNG, or WebP images, up to 2 MB each.
+  - Search/filter the collection and preview images in a reusable full-screen
+    zoom viewer with keyboard controls and focus containment.
+  - Published designs can be revised; the first detail/image change safely moves
+    the design back to draft for reapproval instead of changing live content.
+  - See draft/submitted/approved/rejected totals and reviewer feedback.
+  - Submit designs for approval and delete owned designs.
+- Added an Administration workspace:
+  - Search and filter submitted designs and open images in a zoomable lightbox.
+  - Approve and publish or reject with a required reason.
+  - Search/filter vendor and customer directories and create vendor accounts.
+  - Super admins can edit non-email profile fields, activate/deactivate accounts,
+    and delete accounts that have no protected design/order history.
+  - Regular admins retain approval and read-only directory access.
+- Added persisted `is_active` account status. Inactive accounts cannot log in,
+  refresh sessions, or continue using an existing access token.
+- Added persisted notifications with an unread badge/popover, mark-one-read, and
+  mark-all-read flows. Admins are notified on submission; vendors are notified
+  on approval/rejection.
+- Added durable Google Cloud Storage integration:
+  - The private bucket is configured only through `GCS_BUCKET_NAME`; real cloud
+    resource names remain outside tracked files.
+  - Final objects use `vendors/{vendor_id}/designs/{design_id}/{image}`.
+  - Local ADC automatically impersonates the runtime service account configured
+    only in the ignored `.env`; no credential keys are stored in the repository.
+  - The browser communicates only with FastAPI. The backend validates and
+    uploads image bytes to GCS and proxies authorized image reads.
+  - PostgreSQL stores bucket/object keys and upload metadata.
+  - Upload validation enforces MIME type, matching file signatures, a 2 MB size
+    limit, and at most 10 images per design before storage.
+  - Deleting an image or design deletes its bucket objects first; missing
+    objects are handled idempotently.
+  - Designs referenced by an order cannot be deleted.
+- Public design and favorite APIs now return approved designs only.
+- Orders reject designs that are not approved.
+- Added startup compatibility updates for role and design moderation columns;
+  new image, review-history, and notification tables are created automatically.
+- Added GCS configuration to `.env.example`, Cloud Run deployment variables,
+  and one-time GCP IAM/bucket instructions.
+- Replaced signed browser upload/read URLs with backend-only GCS integration.
+  Failed storage writes do not create database image records, and failed
+  database commits trigger compensating bucket cleanup.
+- Cloud Storage authentication and IAM failures now produce actionable popup
+  messages. Login credential failures retain the backend's specific error
+  instead of being mislabeled as an expired session.
+- Registration now explains that vendor access is reviewed separately and shows
+  the temporary contact address `vendors@anutailoring.com`.
 
 ### Completed
 
@@ -21,6 +81,14 @@ The initial customer account experience is implemented across the React frontend
 - Empty catalog and empty favorites states are implemented for the current no-data case.
 - Catalog supports search, women/men filters, and a favorites-only view.
 - Design favorites use the existing persisted backend APIs with optimistic UI updates.
+- Catalog cards now browse every published design image with previous/next controls and an image counter.
+- Customers can open a design from its image, title, or action link into a responsive detail gallery with scrollable thumbnails, vendor information, pricing, favorites, and full-screen zoom.
+- Customers can place a made-to-measure order from a published design using a saved measurement profile and delivery address, then track all orders from the shared Order Centre.
+- Vendors have a privacy-scoped order view containing only items from their own designs, with customer, fit, instructions, and delivery information needed for fulfilment. Vendors receive a notification when an order is placed.
+- Admins can search/filter every order, update its fulfilment status and tracking number, and automatically notify the customer about status changes.
+- Admins can create, edit, activate/deactivate, and delete configurable measurement categories, including customer-facing fields and optional standard-size presets. Customer measurement forms now load these definitions from the backend and can prefill an editable standard size.
+- Filter dropdowns now share a consistent themed control across catalog workspaces, administration, checkout, and orders.
+- Profile & Settings received a clearer tailoring-focused introduction, summary cards, improved section language, and refined typography/layout.
 - Authenticated header includes a profile dropdown with **Profile & settings** and **Log out**.
 - Profile page includes:
   - Editable name, phone number, and location.
@@ -70,11 +138,17 @@ The presets follow Indian vocational tailoring material rather than one universa
 
 ## Recommended next milestone
 
-1. Add Alembic migrations before moving beyond the early development schema.
-2. Add design administration/seed data so the catalog can be exercised with real cards and imagery.
+1. Replace startup compatibility statements with versioned Alembic migrations
+   before production data exists.
+2. Add integration tests for role authorization, backend upload completion,
+   moderation transitions, bucket cleanup, and notification ownership.
 3. Add per-measurement “how to measure” guidance and diagrams.
-4. Add backend/frontend automated tests for profile, measurement, address, and favorite flows.
-5. Begin the garment customization and order flow after the catalog data model is finalized.
+4. Add a transactional outbox/retry worker for bucket deletion, vendor business
+   profiles, admin audit logs, password reset, and forced temporary-password change.
+5. Add pagination, search indexes, NUMERIC pricing, image thumbnails, and CDN
+   delivery before the catalog grows.
+6. Begin the garment customization and order flow after validating the
+   marketplace with real vendor designs.
 
 ## Resume prompt
 

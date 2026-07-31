@@ -5,16 +5,17 @@ interface DialogProps {
   title: string
   description?: string
   children: ReactNode
+  className?: string
   onClose: () => void
 }
 
-export function Dialog({ title, description, children, onClose }: DialogProps) {
+export function Dialog({ title, description, children, className = "", onClose }: DialogProps) {
   return (
     <div className="dialog-backdrop" role="presentation" onMouseDown={onClose}>
       <section
         aria-modal="true"
         aria-labelledby="dialog-title"
-        className="dialog-panel"
+        className={`dialog-panel ${className}`.trim()}
         role="dialog"
         onMouseDown={(event) => event.stopPropagation()}
       >

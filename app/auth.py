@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
-from app.models import User
+from app.models import User, UserRole
 from app.schemas import (
     UserCreate,
     UserLogin,
@@ -97,7 +97,32 @@ async def get_current_user(
     user = result.scalar_one_or_none()
     if user is None:
         raise credentials_exception
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is inactive. Contact an administrator.",
+        )
     return user
+
+
+def require_roles(*allowed_roles: str):
+    async def role_dependency(
+        current_user: User = Depends(get_current_user),
+    ) -> User:
+        if current_user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not have permission to perform this action",
+            )
+        return current_user
+
+    return role_dependency
+
+
+require_vendor = require_roles(UserRole.VENDOR.value)
+require_customer = require_roles(UserRole.CUSTOMER.value)
+require_admin = require_roles(UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value)
+require_super_admin = require_roles(UserRole.SUPER_ADMIN.value)
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -118,6 +143,7 @@ async def register_user(user_in: UserCreate, db: AsyncSession = Depends(get_db))
         email=user_in.email,
         phone=user_in.phone,
         hashed_password=hashed_password,
+        role=UserRole.CUSTOMER.value,
     )
     db.add(user)
     try:
@@ -147,6 +173,11 @@ async def login_for_access_token(
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is inactive. Contact an administrator.",
+        )
     access_token = create_access_token(data={"sub": str(user.id)})
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
     return {"access_token": access_token, "refresh_token": refresh_token}
@@ -160,10 +191,10 @@ async def refresh_access_token(
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
 
-    if not user:
+    if not user or not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token - user not found",
+            detail="Invalid refresh token or inactive account",
         )
     
     access_token = create_access_token(data={"sub": str(user.id)})

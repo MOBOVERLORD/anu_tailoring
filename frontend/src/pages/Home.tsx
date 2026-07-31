@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react"
-import { Heart, LoaderCircle, Search, Shirt, Sparkles } from "lucide-react"
+import { ChevronLeft, ChevronRight, Eye, Heart, LoaderCircle, Search, Shirt, Sparkles } from "lucide-react"
 import { useSearchParams } from "react-router-dom"
 import toast from "react-hot-toast"
+import { ApiImage } from "@/components/ApiImage"
+import { DesignDetailsDialog } from "@/components/DesignDetailsDialog"
+import { OrderDesignDialog } from "@/components/OrderDesignDialog"
 import { api } from "@/lib/api"
-import type { Design } from "@/types/api"
+import type { Design, UserProfile } from "@/types/api"
 
 type Category = "all" | "women" | "men"
 
@@ -13,6 +16,10 @@ const Home = () => {
   const [category, setCategory] = useState<Category>("all")
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(true)
+  const [cardImageIndexes, setCardImageIndexes] = useState<Record<number, number>>({})
+  const [selectedDesign, setSelectedDesign] = useState<Design | null>(null)
+  const [orderDesign, setOrderDesign] = useState<Design | null>(null)
+  const [profile, setProfile] = useState<UserProfile | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
   const favoritesOnly = searchParams.get("view") === "favorites"
 
@@ -20,10 +27,12 @@ const Home = () => {
     Promise.all([
       api<Design[]>("/api/designs"),
       api<Design[]>("/api/designs/liked/me"),
+      api<UserProfile>("/api/auth/me"),
     ])
-      .then(([allDesigns, likedDesigns]) => {
+      .then(([allDesigns, likedDesigns, currentProfile]) => {
         setDesigns(allDesigns)
         setFavorites(likedDesigns)
+        setProfile(currentProfile)
       })
       .catch((error: Error) => toast.error(error.message))
       .finally(() => setLoading(false))
@@ -55,6 +64,13 @@ const Home = () => {
       )
       toast.error((error as Error).message)
     }
+  }
+
+  const moveCardImage = (designId: number, imageCount: number, direction: number) => {
+    setCardImageIndexes((current) => ({
+      ...current,
+      [designId]: ((current[designId] ?? 0) + direction + imageCount) % imageCount,
+    }))
   }
 
   return (
@@ -119,11 +135,27 @@ const Home = () => {
         <section className="design-grid" aria-live="polite">
           {visibleDesigns.map((design) => {
             const liked = favorites.some((item) => item.id === design.id)
+            const gallery = design.images
+              .filter((image) => image.upload_status === "ready" && Boolean(image.url))
+              .sort((a, b) => a.sort_order - b.sort_order)
+            const imageIndex = Math.min(cardImageIndexes[design.id] ?? 0, Math.max(0, gallery.length - 1))
+            const currentImageUrl = gallery[imageIndex]?.url || design.image_url
             return (
               <article className="design-card" key={design.id}>
                 <div className="design-image">
-                  <img alt={design.title} src={design.image_url} />
+                  {currentImageUrl ? (
+                    <button
+                      aria-label={`Open ${design.title}`}
+                      className="design-preview-trigger"
+                      onClick={() => setSelectedDesign(design)}
+                      type="button"
+                    >
+                      <ApiImage alt={`${design.title}, image ${imageIndex + 1}`} src={currentImageUrl} />
+                      <span><Eye size={16} /> View design</span>
+                    </button>
+                  ) : <div className="design-image-placeholder"><Shirt size={42} /></div>}
                   <button
+                    aria-pressed={liked}
                     aria-label={`${liked ? "Remove" : "Add"} ${design.title} ${liked ? "from" : "to"} favorites`}
                     className={`favorite-button ${liked ? "active" : ""}`}
                     onClick={() => toggleFavorite(design)}
@@ -131,15 +163,43 @@ const Home = () => {
                   >
                     <Heart fill={liked ? "currentColor" : "none"} size={19} />
                   </button>
+                  {gallery.length > 1 && (
+                    <>
+                      <button
+                        aria-label={`Previous image for ${design.title}`}
+                        className="card-gallery-nav previous"
+                        onClick={() => moveCardImage(design.id, gallery.length, -1)}
+                        type="button"
+                      >
+                        <ChevronLeft size={19} />
+                      </button>
+                      <button
+                        aria-label={`Next image for ${design.title}`}
+                        className="card-gallery-nav next"
+                        onClick={() => moveCardImage(design.id, gallery.length, 1)}
+                        type="button"
+                      >
+                        <ChevronRight size={19} />
+                      </button>
+                      <span className="card-gallery-count">{imageIndex + 1} / {gallery.length}</span>
+                    </>
+                  )}
                 </div>
                 <div className="design-card-body">
                   <div className="design-meta">
                     <span>{design.category}</span>
                     <span>{design.garment_type}</span>
                   </div>
-                  <h2>{design.title}</h2>
+                  <button className="design-title-button" onClick={() => setSelectedDesign(design)} type="button">
+                    <h2>{design.title}</h2>
+                  </button>
                   <p>{design.description}</p>
-                  <strong>From ₹{design.base_price.toLocaleString("en-IN")}</strong>
+                  <div className="design-card-footer">
+                    <strong>From ₹{design.base_price.toLocaleString("en-IN")}</strong>
+                    <button className="design-view-button" onClick={() => setSelectedDesign(design)} type="button">
+                      View design <ChevronRight size={15} />
+                    </button>
+                  </div>
                 </div>
               </article>
             )
@@ -165,6 +225,19 @@ const Home = () => {
           )}
         </section>
       )}
+      {selectedDesign && (
+        <DesignDetailsDialog
+          design={selectedDesign}
+          isFavorite={favorites.some((item) => item.id === selectedDesign.id)}
+          onClose={() => setSelectedDesign(null)}
+          onOrder={profile?.role === "customer" ? () => {
+            setOrderDesign(selectedDesign)
+            setSelectedDesign(null)
+          } : undefined}
+          onToggleFavorite={() => toggleFavorite(selectedDesign)}
+        />
+      )}
+      {orderDesign && <OrderDesignDialog design={orderDesign} onClose={() => setOrderDesign(null)} />}
     </div>
   )
 }
