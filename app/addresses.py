@@ -7,6 +7,8 @@ from app.database import get_db
 from app.models import DeliveryAddress, User
 from app.schemas import DeliveryAddressCreate, DeliveryAddressUpdate, DeliveryAddressResponse
 from app.auth import get_current_user
+from app.deliveries import geocode_customer_address
+from app.google_maps import GoogleMapsError, maps_configured
 
 router = APIRouter(prefix="/api/addresses", tags=["addresses"])
 
@@ -29,6 +31,11 @@ async def create_address(
         await _clear_existing_default(current_user.id, db)
 
     new_address = DeliveryAddress(**address_data.model_dump(), user_id=current_user.id)
+    if maps_configured():
+        try:
+            await geocode_customer_address(new_address)
+        except GoogleMapsError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
     db.add(new_address)
     await db.commit()
     await db.refresh(new_address)
@@ -70,6 +77,20 @@ async def update_address(
 
     for field, value in update_fields.items():
         setattr(address, field, value)
+
+    address_fields = {
+        "street_address", "city", "state", "postal_code", "country"
+    }
+    if address_fields.intersection(update_fields):
+        address.google_place_id = None
+        address.latitude = None
+        address.longitude = None
+        address.geocoded_at = None
+        if maps_configured():
+            try:
+                await geocode_customer_address(address)
+            except GoogleMapsError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     await db.commit()
     await db.refresh(address)

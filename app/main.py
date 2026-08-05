@@ -1,14 +1,15 @@
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy import text
 
 from app.database import engine, Base, AsyncSessionLocal
-from app.models import MeasurementCategory, User, UserRole
+from app.models import AuthSession, MeasurementCategory, User, UserRole
 from app.measurement_catalog import default_category_rows
 from app.config import settings
 from app.auth import hash_password
@@ -16,11 +17,13 @@ from app import (
     addresses,
     admin,
     auth,
+    deliveries,
     designs,
     measurements,
     media,
     notifications,
     orders,
+    products,
     vendor_designs,
 )
 
@@ -67,6 +70,33 @@ async def init_db_and_seed_admin():
         await conn.execute(text(
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_users_phone_not_null "
             "ON users (phone) WHERE phone IS NOT NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_pickup_address VARCHAR(500)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_pickup_place_id VARCHAR(255)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_pickup_latitude DOUBLE PRECISION"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_pickup_longitude DOUBLE PRECISION"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_pickup_geocoded_at TIMESTAMPTZ"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE delivery_addresses ADD COLUMN IF NOT EXISTS google_place_id VARCHAR(255)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE delivery_addresses ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE delivery_addresses ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE delivery_addresses ADD COLUMN IF NOT EXISTS geocoded_at TIMESTAMPTZ"
         ))
         await conn.execute(text(
             "ALTER TABLE measurement_profiles "
@@ -127,8 +157,147 @@ async def init_db_and_seed_admin():
         await conn.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_designs_status ON designs (status)"
         ))
+        await conn.execute(text(
+            "ALTER TABLE order_items ADD COLUMN IF NOT EXISTS work_status "
+            "VARCHAR(30) NOT NULL DEFAULT 'awaiting_invoice'"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_order_items_work_status "
+            "ON order_items (work_status)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE order_items ADD COLUMN IF NOT EXISTS cloth_source "
+            "VARCHAR(30) NOT NULL DEFAULT 'customer_provided'"
+        ))
+        await conn.execute(text(
+            "UPDATE order_items AS oi SET cloth_source = vi.cloth_source "
+            "FROM vendor_invoices AS vi WHERE vi.order_item_id = oi.id"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE vendor_invoices ADD COLUMN IF NOT EXISTS "
+            "cloth_bill_bucket_name VARCHAR(255)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE vendor_invoices ADD COLUMN IF NOT EXISTS "
+            "cloth_bill_object_name VARCHAR(1024)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE vendor_invoices ADD COLUMN IF NOT EXISTS "
+            "cloth_bill_original_filename VARCHAR(255)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE vendor_invoices ADD COLUMN IF NOT EXISTS "
+            "cloth_bill_content_type VARCHAR(100)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE vendor_invoices ADD COLUMN IF NOT EXISTS "
+            "cloth_bill_size_bytes INTEGER"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE vendor_invoices ADD COLUMN IF NOT EXISTS "
+            "cloth_bill_uploaded_at TIMESTAMPTZ"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE vendor_invoices ADD COLUMN IF NOT EXISTS "
+            "revision INTEGER NOT NULL DEFAULT 1"
+        ))
+        # Hot list/detail paths. PostgreSQL does not automatically index foreign
+        # keys, so create the composite indexes the paginated APIs rely on.
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_orders_user_created_at "
+            "ON orders (user_id, created_at DESC)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_orders_created_at "
+            "ON orders (created_at DESC)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_order_items_order_id "
+            "ON order_items (order_id)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_order_items_design_id "
+            "ON order_items (design_id)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_order_comments_item_created_at "
+            "ON order_comments (order_item_id, created_at)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_order_comments_item_id "
+            "ON order_comments (order_item_id, id)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_notifications_user_created_at "
+            "ON notifications (user_id, created_at DESC)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_notifications_user_unread_created_at "
+            "ON notifications (user_id, created_at DESC) WHERE read_at IS NULL"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_designs_vendor_status_updated "
+            "ON designs (vendor_id, status, updated_at DESC)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_deliveries_status_created_at "
+            "ON deliveries (status, created_at DESC)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_deliveries_vendor_created_at "
+            "ON deliveries (vendor_id, created_at DESC)"
+        ))
+        # Product-shop orders share delivery tracking with tailoring orders.
+        # Existing databases need these ALTERs because create_all does not
+        # evolve tables that already exist.
+        await conn.execute(text(
+            "ALTER TABLE deliveries ALTER COLUMN order_id DROP NOT NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS product_order_id INTEGER"
+        ))
+        await conn.execute(text("""
+            DO $$ BEGIN
+                ALTER TABLE deliveries ADD CONSTRAINT fk_deliveries_product_order
+                FOREIGN KEY (product_order_id) REFERENCES product_orders(id) ON DELETE CASCADE;
+            EXCEPTION WHEN duplicate_object THEN NULL;
+            END $$
+        """))
+        await conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_deliveries_product_order_id "
+            "ON deliveries (product_order_id) WHERE product_order_id IS NOT NULL"
+        ))
+        await conn.execute(text("""
+            DO $$ BEGIN
+                ALTER TABLE deliveries ADD CONSTRAINT ck_delivery_exactly_one_order
+                CHECK ((order_id IS NOT NULL) <> (product_order_id IS NOT NULL));
+            EXCEPTION WHEN duplicate_object THEN NULL;
+            END $$
+        """))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_products_vendor_status_updated "
+            "ON products (vendor_id, status, updated_at DESC)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_products_catalog "
+            "ON products (status, category, product_type, updated_at DESC)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_product_orders_customer_created "
+            "ON product_orders (user_id, created_at DESC)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_product_orders_vendor_created "
+            "ON product_orders (vendor_id, created_at DESC)"
+        ))
 
     async with AsyncSessionLocal() as db:
+        await db.execute(
+            delete(AuthSession).where(
+                AuthSession.expires_at <= datetime.now(timezone.utc)
+            )
+        )
+        await db.commit()
         category_count = await db.scalar(select(func.count(MeasurementCategory.id)))
         if not category_count:
             db.add_all([MeasurementCategory(**row) for row in default_category_rows()])
@@ -170,6 +339,31 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
 
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "camera=(), microphone=(), geolocation=(), payment=()",
+    )
+    if not settings.is_development:
+        response.headers.setdefault(
+            "Strict-Transport-Security",
+            "max-age=31536000; includeSubDomains",
+        )
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; img-src 'self' blob: data:; "
+            "style-src 'self' 'unsafe-inline'; font-src 'self'; "
+            "connect-src 'self'; object-src 'none'; base-uri 'self'; "
+            "frame-ancestors 'none'; form-action 'self'",
+        )
+    return response
+
 app.include_router(auth.router)
 app.include_router(designs.router)
 app.include_router(measurements.router)
@@ -177,6 +371,13 @@ app.include_router(measurements.admin_router)
 app.include_router(addresses.router)
 app.include_router(orders.router)
 app.include_router(orders.admin_router)
+app.include_router(products.catalog_router)
+app.include_router(products.vendor_router)
+app.include_router(products.admin_router)
+app.include_router(products.orders_router)
+app.include_router(products.admin_orders_router)
+app.include_router(deliveries.router)
+app.include_router(deliveries.admin_router)
 app.include_router(vendor_designs.router)
 app.include_router(admin.router)
 app.include_router(notifications.router)

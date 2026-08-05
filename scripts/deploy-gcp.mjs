@@ -90,6 +90,9 @@ const deployArguments = [
   "--allow-unauthenticated",
   "--port",
   "8080",
+  "--timeout",
+  "3600",
+  "--session-affinity",
   "--update-env-vars",
   `ENVIRONMENT=production,SERVE_FRONTEND=true,GCS_BUCKET_NAME=${designBucket}`,
 ]

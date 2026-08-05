@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react"
 import type { FormEvent } from "react"
 import {
+  BellRing,
   ChevronRight,
   CircleUserRound,
   Edit3,
+  History,
   Home,
   LoaderCircle,
   MapPin,
@@ -15,19 +17,23 @@ import {
   UserRound,
 } from "lucide-react"
 import toast from "react-hot-toast"
-import { useNavigate } from "react-router-dom"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import { Dialog } from "@/components/Dialog"
-import { api } from "@/lib/api"
+import { AppSelect } from "@/components/ui/AppSelect"
+import { api, getCurrentUser, updateCurrentUserCache } from "@/lib/api"
+import { validMeasurementInput } from "@/lib/formLimits"
 import type {
+  AppNotification,
   DeliveryAddress,
   DeliveryAddressInput,
   MeasurementCategory,
   MeasurementProfile,
   MeasurementProfileInput,
+  NotificationList,
   UserProfile,
 } from "@/types/api"
 
-type Section = "details" | "measurements" | "addresses"
+type Section = "details" | "measurements" | "addresses" | "activity"
 type Gender = "women" | "men" | "unisex" | "kids"
 
 interface GarmentOption {
@@ -188,10 +194,7 @@ function MeasurementForm({
         </div>
         <div className="field">
           <label htmlFor="measurement-unit">Unit</label>
-          <select id="measurement-unit" onChange={(event) => setUnit(event.target.value as "inches" | "cm")} value={unit}>
-            <option value="inches">Inches</option>
-            <option value="cm">Centimetres</option>
-          </select>
+          <AppSelect id="measurement-unit" onValueChange={(value) => setUnit(value as "inches" | "cm")} options={[{ value: "inches", label: "Inches" }, { value: "cm", label: "Centimetres" }]} value={unit} />
         </div>
       </div>
       <div className="field">
@@ -206,17 +209,12 @@ function MeasurementForm({
       </div>
       <div className="field">
         <label htmlFor="garment-type">Garment</label>
-        <select id="garment-type" onChange={(event) => changeGarment(event.target.value)} value={garmentType}>
-          {availableCategories.map((category) => <option key={category.id} value={category.garment_type}>{category.name}</option>)}
-        </select>
+        <AppSelect id="garment-type" onValueChange={changeGarment} options={availableCategories.map((category) => ({ value: category.garment_type, label: category.name }))} value={garmentType} />
       </div>
       {selectedCategory && Object.keys(selectedCategory.standard_sizes).length > 0 && (
         <div className="field">
           <label htmlFor="standard-size">Standard size <small>optional starting point</small></label>
-          <select className="select-control" id="standard-size" onChange={(event) => changeStandardSize(event.target.value)} value={standardSize}>
-            <option value="">Custom measurements</option>
-            {Object.keys(selectedCategory.standard_sizes).map((size) => <option key={size} value={size}>{size}</option>)}
-          </select>
+          <AppSelect id="standard-size" onValueChange={(value) => changeStandardSize(value === "__custom__" ? "" : value)} options={[{ value: "__custom__", label: "Custom measurements" }, ...Object.keys(selectedCategory.standard_sizes).map((size) => ({ value: size, label: size }))]} value={standardSize || "__custom__"} />
           <small>Choosing a size prefills the configured values. You can adjust every measurement.</small>
         </div>
       )}
@@ -232,8 +230,9 @@ function MeasurementForm({
               <input
                 id={`measure-${field.key}`}
                 inputMode="decimal"
+                max="300"
                 min="0.1"
-                onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))}
+                onChange={(event) => { if (validMeasurementInput(event.target.value)) setValues((current) => ({ ...current, [field.key]: event.target.value })) }}
                 placeholder="—"
                 step="0.1"
                 type="number"
@@ -248,6 +247,7 @@ function MeasurementForm({
         <label htmlFor="measurement-notes">Fit notes <small>optional</small></label>
         <textarea
           id="measurement-notes"
+          maxLength={1000}
           onChange={(event) => setNotes(event.target.value)}
           placeholder="Posture, preferred ease, asymmetry, or anything your tailor should know"
           rows={3}
@@ -293,29 +293,29 @@ function AddressForm({
       <div className="form-grid">
         <div className="field">
           <label htmlFor="recipient">Recipient name</label>
-          <input autoFocus id="recipient" onChange={(e) => set("recipient_name", e.target.value)} required value={form.recipient_name} />
+          <input autoFocus id="recipient" maxLength={100} onChange={(e) => set("recipient_name", e.target.value)} required value={form.recipient_name} />
         </div>
         <div className="field">
           <label htmlFor="address-phone">Phone number</label>
-          <input id="address-phone" onChange={(e) => set("phone_number", e.target.value)} required type="tel" value={form.phone_number} />
+          <input id="address-phone" maxLength={20} onChange={(e) => set("phone_number", e.target.value)} required type="tel" value={form.phone_number} />
         </div>
       </div>
       <div className="field">
         <label htmlFor="street">House, building, street and area</label>
-        <textarea id="street" onChange={(e) => set("street_address", e.target.value)} required rows={2} value={form.street_address} />
+        <textarea id="street" maxLength={500} onChange={(e) => set("street_address", e.target.value)} required rows={2} value={form.street_address} />
       </div>
       <div className="form-grid three">
         <div className="field">
           <label htmlFor="city">City</label>
-          <input id="city" onChange={(e) => set("city", e.target.value)} required value={form.city} />
+          <input id="city" maxLength={100} onChange={(e) => set("city", e.target.value)} required value={form.city} />
         </div>
         <div className="field">
           <label htmlFor="state">State</label>
-          <input id="state" onChange={(e) => set("state", e.target.value)} required value={form.state} />
+          <input id="state" maxLength={100} onChange={(e) => set("state", e.target.value)} required value={form.state} />
         </div>
         <div className="field">
           <label htmlFor="pin">PIN code</label>
-          <input id="pin" inputMode="numeric" onChange={(e) => set("postal_code", e.target.value)} required value={form.postal_code} />
+          <input id="pin" inputMode="numeric" maxLength={6} onChange={(e) => { if (/^\d{0,6}$/.test(e.target.value)) set("postal_code", e.target.value) }} pattern="[0-9]{6}" required value={form.postal_code} />
         </div>
       </div>
       <label className="checkbox-field">
@@ -333,12 +333,16 @@ function AddressForm({
 }
 
 const Profile = () => {
+  const [searchParams, setSearchParams] = useSearchParams()
   const [section, setSection] = useState<Section>("details")
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [profileDraft, setProfileDraft] = useState({ full_name: "", phone: "", location: "" })
   const [measurements, setMeasurements] = useState<MeasurementProfile[]>([])
   const [categories, setCategories] = useState<MeasurementCategory[]>([])
   const [addresses, setAddresses] = useState<DeliveryAddress[]>([])
+  const [activities, setActivities] = useState<AppNotification[]>([])
+  const [activityLoading, setActivityLoading] = useState(false)
+  const [activityHasMore, setActivityHasMore] = useState(false)
   const [measurementDialog, setMeasurementDialog] = useState<MeasurementProfile | "new" | null>(null)
   const [addressDialog, setAddressDialog] = useState<DeliveryAddress | "new" | null>(null)
   const [savingProfile, setSavingProfile] = useState(false)
@@ -346,8 +350,17 @@ const Profile = () => {
   const navigate = useNavigate()
 
   useEffect(() => {
+    const requestedSection = searchParams.get("section")
+    setSection(
+      requestedSection === "measurements" || requestedSection === "addresses" || requestedSection === "activity"
+        ? requestedSection
+        : "details"
+    )
+  }, [searchParams])
+
+  useEffect(() => {
     Promise.all([
-      api<UserProfile>("/api/auth/me"),
+      getCurrentUser(),
       api<MeasurementProfile[]>("/api/measurements"),
       api<DeliveryAddress[]>("/api/addresses"),
       api<MeasurementCategory[]>("/api/measurements/categories"),
@@ -370,6 +383,74 @@ const Profile = () => {
       .finally(() => setLoading(false))
   }, [navigate])
 
+  useEffect(() => {
+    if (section !== "activity") return
+
+    let active = true
+    const loadActivity = () => {
+      setActivityLoading(true)
+      api<NotificationList>("/api/notifications?limit=50&offset=0")
+        .then((result) => {
+          if (!active) return
+          setActivities(result.items)
+          setActivityHasMore(result.items.length === 50)
+        })
+        .catch((error: Error) => {
+          if (active) toast.error(error.message)
+        })
+        .finally(() => {
+          if (active) setActivityLoading(false)
+        })
+    }
+
+    loadActivity()
+    window.addEventListener("notifications:changed", loadActivity)
+    return () => {
+      active = false
+      window.removeEventListener("notifications:changed", loadActivity)
+    }
+  }, [section])
+
+  const selectSection = (nextSection: Section) => {
+    setSection(nextSection)
+    setSearchParams(nextSection === "details" ? {} : { section: nextSection }, { replace: true })
+  }
+
+  const loadMoreActivity = async () => {
+    setActivityLoading(true)
+    try {
+      const result = await api<NotificationList>(`/api/notifications?limit=50&offset=${activities.length}`)
+      setActivities((current) => [...current, ...result.items])
+      setActivityHasMore(result.items.length === 50)
+    } catch (error) {
+      toast.error((error as Error).message)
+    } finally {
+      setActivityLoading(false)
+    }
+  }
+
+  const openActivity = async (item: AppNotification) => {
+    if (!item.read_at) {
+      try {
+        const updated = await api<AppNotification>(`/api/notifications/${item.id}/read`, { method: "POST" })
+        setActivities((current) => current.map((activity) => activity.id === updated.id ? updated : activity))
+        window.dispatchEvent(new Event("notifications:changed"))
+      } catch (error) {
+        toast.error((error as Error).message)
+        return
+      }
+    }
+    if (item.link) navigate(item.link)
+  }
+
+  const activityTime = (value: string) => new Date(value).toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  })
+
   const initials = useMemo(() => profile?.full_name
     .split(" ")
     .slice(0, 2)
@@ -386,6 +467,7 @@ const Profile = () => {
         body: JSON.stringify(profileDraft),
       })
       setProfile(updated)
+      updateCurrentUserCache(updated)
       toast.success("Personal details updated")
     } catch (error) {
       toast.error((error as Error).message)
@@ -476,6 +558,7 @@ const Profile = () => {
     { value: "details", label: "Personal details", detail: "Name, phone & location", icon: UserRound },
     { value: "measurements", label: "Measurements", detail: `${measurements.length} saved profile${measurements.length === 1 ? "" : "s"}`, icon: Ruler },
     { value: "addresses", label: "Delivery addresses", detail: `${addresses.length} saved address${addresses.length === 1 ? "" : "es"}`, icon: Home },
+    { value: "activity", label: "Activity log", detail: "Notifications & updates", icon: History },
   ]
 
   return (
@@ -501,7 +584,7 @@ const Profile = () => {
             {navItems.map((item) => {
               const Icon = item.icon
               return (
-                <button className={section === item.value ? "active" : ""} key={item.value} onClick={() => setSection(item.value)} type="button">
+                <button className={section === item.value ? "active" : ""} key={item.value} onClick={() => selectSection(item.value)} type="button">
                   <span className="side-icon"><Icon size={18} /></span>
                   <span><strong>{item.label}</strong><small>{item.detail}</small></span>
                   <ChevronRight size={16} />
@@ -525,7 +608,7 @@ const Profile = () => {
                 <div className="form-grid">
                   <div className="field">
                     <label htmlFor="profile-name">Full name</label>
-                    <input id="profile-name" onChange={(e) => setProfileDraft((current) => ({ ...current, full_name: e.target.value }))} required value={profileDraft.full_name} />
+                    <input id="profile-name" maxLength={100} onChange={(e) => setProfileDraft((current) => ({ ...current, full_name: e.target.value }))} required value={profileDraft.full_name} />
                   </div>
                   <div className="field">
                     <label htmlFor="profile-email">Email address <span className="readonly-badge">Read only</span></label>
@@ -534,13 +617,13 @@ const Profile = () => {
                   </div>
                   <div className="field">
                     <label htmlFor="profile-phone">Phone number</label>
-                    <input id="profile-phone" onChange={(e) => setProfileDraft((current) => ({ ...current, phone: e.target.value }))} placeholder="+91 98765 43210" type="tel" value={profileDraft.phone} />
+                    <input id="profile-phone" maxLength={20} onChange={(e) => setProfileDraft((current) => ({ ...current, phone: e.target.value }))} placeholder="+91 98765 43210" type="tel" value={profileDraft.phone} />
                   </div>
                   <div className="field">
                     <label htmlFor="profile-location">Location</label>
                     <div className="input-with-icon">
                       <MapPin size={17} />
-                      <input id="profile-location" onChange={(e) => setProfileDraft((current) => ({ ...current, location: e.target.value }))} placeholder="City, State" value={profileDraft.location} />
+                      <input id="profile-location" maxLength={150} onChange={(e) => setProfileDraft((current) => ({ ...current, location: e.target.value }))} placeholder="City, State" value={profileDraft.location} />
                     </div>
                   </div>
                 </div>
@@ -625,6 +708,52 @@ const Profile = () => {
                   <h3>No delivery addresses yet</h3>
                   <p>Save your first address now for a quicker checkout later.</p>
                   <button className="button button-primary" onClick={() => setAddressDialog("new")} type="button"><Plus size={17} /> Add an address</button>
+                </div>
+              )}
+            </>
+          )}
+
+          {section === "activity" && (
+            <>
+              <div className="section-heading">
+                <div><p className="section-kicker">Account history</p><h2>Activity log</h2><p>Read notifications and earlier account updates remain available here.</p></div>
+              </div>
+              {activityLoading && activities.length === 0 ? (
+                <div className="inline-empty compact"><LoaderCircle className="spin" size={26} /><p>Loading activity...</p></div>
+              ) : activities.length ? (
+                <div className="activity-log">
+                  {activities.map((item) => (
+                    <article className={`activity-log-item ${item.read_at ? "is-read" : "is-unread"}`} key={item.id}>
+                      <span className="activity-log-icon"><BellRing size={19} /></span>
+                      <div className="activity-log-copy">
+                        <div className="activity-log-title">
+                          <strong>{item.title}</strong>
+                          {!item.read_at && <span>New</span>}
+                        </div>
+                        <p>{item.message}</p>
+                        <small>
+                          {activityTime(item.created_at)}
+                          {item.read_at ? ` | Read ${activityTime(item.read_at)}` : " | Unread"}
+                        </small>
+                      </div>
+                      {(item.link || !item.read_at) && (
+                        <button className="activity-log-action" onClick={() => openActivity(item)} type="button">
+                          {item.link ? "Open" : "Mark read"} <ChevronRight size={15} />
+                        </button>
+                      )}
+                    </article>
+                  ))}
+                  {activityHasMore && (
+                    <button className="button button-secondary activity-load-more" disabled={activityLoading} onClick={loadMoreActivity} type="button">
+                      {activityLoading ? <><LoaderCircle className="spin" size={16} /> Loading...</> : "Load older activity"}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="inline-empty">
+                  <span className="record-icon large"><History size={28} /></span>
+                  <h3>No activity yet</h3>
+                  <p>Account and order updates will appear here after they are created.</p>
                 </div>
               )}
             </>

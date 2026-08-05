@@ -43,6 +43,11 @@ is the `super_admin`; it can create verified vendors and manage customer/vendor
 access. Regular `admin` accounts can review designs and view account directories
 but cannot modify member accounts.
 
+Authentication uses 10-minute access tokens and rotating 30-minute refresh
+sessions. The refresh token is stored only in an `HttpOnly` cookie; the UI
+refreshes it automatically while active. Logout revokes the persisted session
+immediately. In production the cookie is also marked `Secure` and requires HTTPS.
+
 Vendor image uploads require `GCS_BUCKET_NAME` and Google Application Default
 Credentials. For local GCS testing, authenticate once with:
 
@@ -54,6 +59,22 @@ For local development, set `GCS_SIGNING_SERVICE_ACCOUNT` in the ignored `.env`
 to the runtime service-account email. The backend automatically impersonates
 that account for bucket operations using the developer's short-lived ADC.
 Never place the real value in `.env.example` or another tracked file.
+
+Automatic delivery pricing uses Google Maps Platform entirely from FastAPI.
+Enable the **Geocoding API** and **Routes API** in the Google Cloud console,
+create a separate server-side API key restricted to those two APIs, and add it
+only to the ignored local `.env`:
+
+```text
+GOOGLE_MAPS_API_KEY=your-restricted-server-key
+```
+
+The React UI never receives this key. Administrators verify each tailoring
+vendor's pickup address, and customer delivery addresses are geocoded by the
+backend. Place IDs and refreshable coordinates are stored in PostgreSQL; route
+distance is calculated with Routes API Compute Route Matrix. A signed 10-minute
+quote prevents a second Google route request when the customer places the order.
+The configured price is charged for every started 0.1 km (100 metres).
 
 ## Start the services separately
 
@@ -125,6 +146,7 @@ The repository is ready for Google Cloud Run:
 
    - A secret containing the production database URL.
    - A secret containing the JWT signing key.
+   - A secret containing the restricted Google Maps Platform API key.
 
    The database URL should use the async PostgreSQL driver and URL-encode any
    special characters in the password:
@@ -148,7 +170,7 @@ $env:GCP_DESIGN_BUCKET="YOUR_PRIVATE_DESIGN_BUCKET"
 $env:GCP_SERVICE_ACCOUNT="YOUR_RUNTIME_SERVICE_ACCOUNT_EMAIL"
 
 .\deploy-gcp.cmd `
-  --set-secrets=DATABASE_URL=YOUR_DATABASE_SECRET:latest,SECRET_KEY=YOUR_JWT_SECRET:latest
+  --set-secrets=DATABASE_URL=YOUR_DATABASE_SECRET:latest,SECRET_KEY=YOUR_JWT_SECRET:latest,GOOGLE_MAPS_API_KEY=YOUR_MAPS_KEY_SECRET:latest
 ```
 
 The command builds from the repository `Dockerfile`, deploys the Cloud Run
@@ -167,6 +189,22 @@ npm.cmd run deploy:gcp
 ```
 
 Use `.\deploy-gcp.cmd --help` to see the supported environment variables.
+
+Order chat uses authenticated WebSockets. The deployment command sets Cloud
+Run's request timeout to 60 minutes and enables best-effort session affinity.
+Clients reconnect automatically because Cloud Run can close a socket at the
+configured timeout or route a reconnect to another instance. Messages are
+stored in PostgreSQL and sockets reconcile from the last message ID, so chat
+history and cross-instance delivery do not depend on one container's memory.
+
+## Vendor buying and selling
+
+- Vendors can purchase designs and shop products from other active vendors.
+- A vendor's own listings remain previewable but cannot be ordered by that vendor.
+- **My orders** (`/orders`) contains purchases made by the signed-in account.
+- **Sales orders** (`/vendor/sales-orders`) contains tailoring and product orders
+  placed with the vendor and exposes the fulfilment, invoice, rejection, and
+  customer-chat actions.
 
 ## Design publishing workflow
 
@@ -204,3 +242,40 @@ vendors/
 Google Cloud Storage represents these folders as object-name prefixes, so the
 vendor and design folders appear automatically when FastAPI uploads the first
 validated image.
+
+## Vendor shop workflow
+
+- Vendors open **Products** from their workspace and create either a ready-made
+  garment (priced per piece) or fabric (priced per metre), including stock,
+  sizes/colours, and 1–10 images.
+- Product drafts are submitted to **Administration → Shop products**. Only an
+  approved, in-stock product from an active vendor appears in the customer Shop.
+- Customers choose the variant, quantity, and saved address. FastAPI obtains the
+  driving route, signs the short-lived delivery quote, locks stock during
+  checkout, and stores a separate shop order plus its delivery record.
+- Shop orders appear in the same Order Centre for customers, vendors, and
+  administrators. Vendors progress fulfilment through confirmed, packed,
+  shipped, and delivered; cancelling before shipment restores stock.
+
+Product images remain private and are proxied through authenticated FastAPI
+media endpoints. They use this GCS object hierarchy:
+
+```text
+vendors/
+  {vendor_id}/
+    products/
+      {product_id}/
+        {unique_image_id}.jpg
+```
+
+## Tailoring order cancellation
+
+- A customer can cancel the complete tailoring order until any invoice in that
+  order is accepted.
+- A vendor can reject only the item belonging to their own design, also only
+  before that item's invoice is accepted.
+- Both actions require a reason, retain the closed item in order history,
+  notify the other party, and cancel the applicable delivery charge.
+- Invoice acceptance is irreversible for cancellation purposes. This rule is
+  enforced by FastAPI for customer, vendor, and administrator requests, not
+  only by hiding buttons in the UI.

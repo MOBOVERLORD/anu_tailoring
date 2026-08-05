@@ -10,12 +10,16 @@ from sqlalchemy.orm import selectinload
 from app.auth import hash_password, require_admin, require_super_admin
 from app.database import get_db
 from app.design_service import serialize_design_async, serialize_designs_async
+from app.deliveries import geocode_vendor_pickup
+from app.google_maps import GoogleMapsError
 from app.models import (
     Design,
     DesignReview,
     DesignStatus,
     Notification,
     Order,
+    Product,
+    ProductOrder,
     User,
     UserRole,
 )
@@ -23,7 +27,7 @@ from app.schemas import (
     DesignResponse,
     DesignReviewRequest,
     AdminUserUpdate,
-    UserCreate,
+    VendorCreate,
     UserResponse,
     UserStatusUpdate,
 )
@@ -174,7 +178,7 @@ async def list_users(
     status_code=status.HTTP_201_CREATED,
 )
 async def create_vendor(
-    payload: UserCreate,
+    payload: VendorCreate,
     _: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -197,6 +201,10 @@ async def create_vendor(
         hashed_password=hash_password(payload.password),
         role=UserRole.VENDOR.value,
     )
+    try:
+        await geocode_vendor_pickup(vendor, payload.pickup_address)
+    except GoogleMapsError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     db.add(vendor)
     try:
         await db.commit()
@@ -237,6 +245,16 @@ async def update_managed_user(
         if duplicate:
             raise HTTPException(status_code=409, detail="Phone number is already registered")
 
+    if (
+        user.role == UserRole.VENDOR.value
+        and payload.vendor_pickup_address is not None
+        and payload.vendor_pickup_address.strip() != (user.vendor_pickup_address or "")
+    ):
+        try:
+            await geocode_vendor_pickup(user, payload.vendor_pickup_address)
+        except GoogleMapsError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     user.full_name = payload.full_name
     user.phone = payload.phone
     user.location = payload.location.strip() if payload.location else None
@@ -271,13 +289,12 @@ async def delete_managed_user(
 ):
     user = await _managed_user(user_id, db)
     if user.role == UserRole.VENDOR.value:
-        design_reference = await db.scalar(
-            select(Design.id).where(Design.vendor_id == user.id).limit(1)
-        )
-        if design_reference:
+        design_reference = await db.scalar(select(Design.id).where(Design.vendor_id == user.id).limit(1))
+        product_reference = await db.scalar(select(Product.id).where(Product.vendor_id == user.id).limit(1))
+        if design_reference or product_reference:
             raise HTTPException(
                 status_code=409,
-                detail="This vendor has designs and cannot be deleted. Deactivate the account instead.",
+                detail="This vendor has designs or shop products and cannot be deleted. Deactivate the account instead.",
             )
     order_reference = await db.scalar(
         select(Order.id).where(Order.user_id == user.id).limit(1)
@@ -286,6 +303,16 @@ async def delete_managed_user(
         raise HTTPException(
             status_code=409,
             detail="This user has order history and cannot be deleted. Deactivate the account instead.",
+        )
+    product_order_reference = await db.scalar(
+        select(ProductOrder.id).where(
+            (ProductOrder.user_id == user.id) | (ProductOrder.vendor_id == user.id)
+        ).limit(1)
+    )
+    if product_order_reference:
+        raise HTTPException(
+            status_code=409,
+            detail="This user has shop order history and cannot be deleted. Deactivate the account instead.",
         )
 
     await db.delete(user)

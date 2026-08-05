@@ -5,7 +5,7 @@ import toast from "react-hot-toast"
 import { ApiImage } from "@/components/ApiImage"
 import { DesignDetailsDialog } from "@/components/DesignDetailsDialog"
 import { OrderDesignDialog } from "@/components/OrderDesignDialog"
-import { api } from "@/lib/api"
+import { api, getCurrentUser } from "@/lib/api"
 import type { Design, UserProfile } from "@/types/api"
 
 type Category = "all" | "women" | "men"
@@ -27,7 +27,7 @@ const Home = () => {
     Promise.all([
       api<Design[]>("/api/designs"),
       api<Design[]>("/api/designs/liked/me"),
-      api<UserProfile>("/api/auth/me"),
+      getCurrentUser(),
     ])
       .then(([allDesigns, likedDesigns, currentProfile]) => {
         setDesigns(allDesigns)
@@ -195,7 +195,7 @@ const Home = () => {
                   </button>
                   <p>{design.description}</p>
                   <div className="design-card-footer">
-                    <strong>From ₹{design.base_price.toLocaleString("en-IN")}</strong>
+                    <strong>Tailoring from ₹{design.base_price.toLocaleString("en-IN")}</strong>
                     <button className="design-view-button" onClick={() => setSelectedDesign(design)} type="button">
                       View design <ChevronRight size={15} />
                     </button>
@@ -230,7 +230,7 @@ const Home = () => {
           design={selectedDesign}
           isFavorite={favorites.some((item) => item.id === selectedDesign.id)}
           onClose={() => setSelectedDesign(null)}
-          onOrder={profile?.role === "customer" ? () => {
+          onOrder={(profile?.role === "customer" || profile?.role === "vendor") && selectedDesign.vendor_id !== profile.id ? () => {
             setOrderDesign(selectedDesign)
             setSelectedDesign(null)
           } : undefined}

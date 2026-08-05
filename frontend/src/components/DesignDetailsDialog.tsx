@@ -112,8 +112,9 @@ export const DesignDetailsDialog = ({
             )}
             <div className="design-detail-footer">
               <div>
-                <small>Starting from</small>
+                <small>Tailoring service from</small>
                 <strong>₹{design.base_price.toLocaleString("en-IN")}</strong>
+                <span>Cloth and delivery are quoted after measurements.</span>
               </div>
               <div className="design-detail-actions">
                 <button aria-pressed={isFavorite} className={`button ${isFavorite ? "design-favorite-active" : "button-secondary"}`} onClick={onToggleFavorite} type="button">

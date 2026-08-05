@@ -6,7 +6,6 @@ import { api, getAccessToken, setSession } from "@/lib/api"
 
 interface TokenResponse {
   access_token: string
-  refresh_token: string
 }
 
 const Login = () => {
@@ -26,7 +25,7 @@ const Login = () => {
         method: "POST",
         body: JSON.stringify({ email, password }),
       })
-      setSession(data.access_token, data.refresh_token)
+      setSession(data.access_token)
       toast.success("Welcome back")
       navigate("/")
     } catch (error) {
@@ -75,6 +74,7 @@ const Login = () => {
                 <input
                   autoComplete="email"
                   id="email"
+                  maxLength={254}
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="you@example.com"
                   required
@@ -92,6 +92,7 @@ const Login = () => {
                 <input
                   autoComplete="current-password"
                   id="password"
+                  maxLength={512}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="Enter your password"
                   required

@@ -48,8 +48,11 @@ class Settings(BaseSettings):
     # run with a known/shared secret key.
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+    JWT_ISSUER: str = "anu-tailoring-api"
+    JWT_AUDIENCE: str = "anu-tailoring-ui"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 10
+    REFRESH_TOKEN_EXPIRE_MINUTES: int = 30
+    MAX_ACTIVE_SESSIONS_PER_USER: int = 5
     SERVE_FRONTEND: bool = False
 
     # Google Cloud Storage for durable design media.
@@ -58,7 +61,13 @@ class Settings(BaseSettings):
     # Cloud Run derives its attached identity.
     GCS_SIGNING_SERVICE_ACCOUNT: Optional[EmailStr] = None
     MAX_DESIGN_IMAGE_MB: int = 2
+    MAX_INVOICE_ATTACHMENT_MB: int = 5
     VENDOR_CONTACT_EMAIL: str = "vendors@anutailoring.com"
+
+    # Called only by FastAPI. Store this key in .env locally and Secret Manager
+    # in Cloud Run; never expose it through a VITE_ browser variable.
+    GOOGLE_MAPS_API_KEY: Optional[str] = None
+    GOOGLE_MAPS_TIMEOUT_SECONDS: float = 8.0
 
     # Admin Account Initial Credentials
     ADMIN_NAME: str = "System Admin"

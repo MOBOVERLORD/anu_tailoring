@@ -2,7 +2,8 @@ import enum
 from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy import (
-    Boolean, String, Integer, Float, ForeignKey, DateTime, Enum, Table, Column, Text
+    Boolean, String, Integer, Float, ForeignKey, DateTime, Enum, Table, Column, Text,
+    CheckConstraint, UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -58,6 +59,15 @@ class User(Base):
         String(20), nullable=True, unique=True, index=True
     )
     location: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    # Delivery pricing uses an administrator-verified business pickup point,
+    # separate from the vendor-editable profile location.
+    vendor_pickup_address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    vendor_pickup_place_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    vendor_pickup_latitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    vendor_pickup_longitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    vendor_pickup_geocoded_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     hashed_password: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(
         String(20), default=UserRole.CUSTOMER.value, server_default=UserRole.CUSTOMER.value
@@ -85,6 +95,29 @@ class User(Base):
     notifications: Mapped[List["Notification"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    auth_sessions: Mapped[List["AuthSession"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class AuthSession(Base):
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    refresh_token_hash: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    user: Mapped["User"] = relationship(back_populates="auth_sessions")
 
 
 class MeasurementProfile(Base):
@@ -148,6 +181,12 @@ class DeliveryAddress(Base):
     postal_code: Mapped[str] = mapped_column(String(20))
     country: Mapped[str] = mapped_column(String(100), default="India")
     is_default: Mapped[bool] = mapped_column(default=False)
+    google_place_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    latitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    longitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    geocoded_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     user: Mapped["User"] = relationship(back_populates="addresses")
 
@@ -238,6 +277,66 @@ class DesignReview(Base):
     reviewer: Mapped["User"] = relationship(foreign_keys=[reviewer_id])
 
 
+class Product(Base):
+    __tablename__ = "products"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    vendor_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    title: Mapped[str] = mapped_column(String(150), index=True)
+    description: Mapped[str] = mapped_column(Text)
+    product_type: Mapped[str] = mapped_column(String(30), index=True)
+    category: Mapped[str] = mapped_column(String(20), index=True)
+    garment_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    price: Mapped[float] = mapped_column(Float)
+    unit: Mapped[str] = mapped_column(String(20), default="piece", server_default="piece")
+    stock_quantity: Mapped[float] = mapped_column(Float, default=0, server_default="0")
+    sizes: Mapped[list] = mapped_column(JSONB, default=list)
+    colors: Mapped[list] = mapped_column(JSONB, default=list)
+    status: Mapped[str] = mapped_column(
+        String(20), default=DesignStatus.DRAFT.value,
+        server_default=DesignStatus.DRAFT.value, index=True
+    )
+    rejection_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reviewed_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    vendor: Mapped["User"] = relationship(foreign_keys=[vendor_id])
+    reviewer: Mapped[Optional["User"]] = relationship(foreign_keys=[reviewed_by_id])
+    images: Mapped[List["ProductImage"]] = relationship(
+        back_populates="product", cascade="all, delete-orphan",
+        order_by="ProductImage.sort_order",
+    )
+
+
+class ProductImage(Base):
+    __tablename__ = "product_images"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    product_id: Mapped[int] = mapped_column(
+        ForeignKey("products.id", ondelete="CASCADE"), index=True
+    )
+    bucket_name: Mapped[str] = mapped_column(String(255))
+    object_name: Mapped[str] = mapped_column(String(1024), unique=True)
+    original_filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(100))
+    size_bytes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    upload_status: Mapped[str] = mapped_column(
+        String(20), default="ready", server_default="ready"
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    product: Mapped["Product"] = relationship(back_populates="images")
+
+
 class Notification(Base):
     __tablename__ = "notifications"
 
@@ -275,6 +374,9 @@ class Order(Base):
     order_items: Mapped[List["OrderItem"]] = relationship(
         back_populates="order", cascade="all, delete-orphan"
     )
+    deliveries: Mapped[List["Delivery"]] = relationship(
+        back_populates="order", cascade="all, delete-orphan"
+    )
 
 
 class OrderItem(Base):
@@ -288,7 +390,15 @@ class OrderItem(Base):
     )
     fabric_choice: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     custom_instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # The customer owns this decision. Vendors quote against it but cannot
+    # switch who supplies the cloth while preparing an invoice.
+    cloth_source: Mapped[str] = mapped_column(
+        String(30), default="customer_provided", server_default="customer_provided"
+    )
     price: Mapped[float] = mapped_column(Float)
+    work_status: Mapped[str] = mapped_column(
+        String(30), default="awaiting_invoice", server_default="awaiting_invoice", index=True
+    )
 
     # Full measurement values at the moment the order was placed, so the record
     # stays accurate even if the linked MeasurementProfile is edited later.
@@ -297,3 +407,207 @@ class OrderItem(Base):
     order: Mapped["Order"] = relationship(back_populates="order_items")
     design: Mapped["Design"] = relationship()
     measurement_profile: Mapped["MeasurementProfile"] = relationship()
+    invoice: Mapped[Optional["VendorInvoice"]] = relationship(
+        back_populates="order_item", cascade="all, delete-orphan", uselist=False
+    )
+    comments: Mapped[List["OrderComment"]] = relationship(
+        back_populates="order_item",
+        cascade="all, delete-orphan",
+        order_by="OrderComment.created_at",
+    )
+
+
+class VendorInvoice(Base):
+    __tablename__ = "vendor_invoices"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    order_item_id: Mapped[int] = mapped_column(
+        ForeignKey("order_items.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    invoice_number: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    revision: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    service_amount: Mapped[float] = mapped_column(Float)
+    cloth_source: Mapped[str] = mapped_column(String(30))
+    cloth_type: Mapped[str] = mapped_column(String(150))
+    cloth_requirement: Mapped[str] = mapped_column(Text)
+    cloth_cost: Mapped[float] = mapped_column(Float, default=0, server_default="0")
+    delivery_cost: Mapped[float] = mapped_column(Float, default=0, server_default="0")
+    status: Mapped[str] = mapped_column(
+        String(30), default="draft", server_default="draft", index=True
+    )
+    payment_status: Mapped[str] = mapped_column(
+        String(30), default="not_required", server_default="not_required", index=True
+    )
+    payment_reference: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    cloth_received: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    cloth_bill_bucket_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    cloth_bill_object_name: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    cloth_bill_original_filename: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    cloth_bill_content_type: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    cloth_bill_size_bytes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    cloth_bill_uploaded_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    issued_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    order_item: Mapped["OrderItem"] = relationship(back_populates="invoice")
+    line_items: Mapped[List["VendorInvoiceLineItem"]] = relationship(
+        back_populates="invoice",
+        cascade="all, delete-orphan",
+        order_by="VendorInvoiceLineItem.id",
+    )
+
+
+class VendorInvoiceLineItem(Base):
+    __tablename__ = "vendor_invoice_line_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    invoice_id: Mapped[int] = mapped_column(
+        ForeignKey("vendor_invoices.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(150))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    quantity: Mapped[float] = mapped_column(Float, default=1, server_default="1")
+    unit_price: Mapped[float] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    invoice: Mapped["VendorInvoice"] = relationship(back_populates="line_items")
+
+
+class OrderComment(Base):
+    __tablename__ = "order_comments"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    order_item_id: Mapped[int] = mapped_column(
+        ForeignKey("order_items.id", ondelete="CASCADE"), index=True
+    )
+    author_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    message: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    order_item: Mapped["OrderItem"] = relationship(back_populates="comments")
+    author: Mapped["User"] = relationship(foreign_keys=[author_id])
+
+
+class ProductOrder(Base):
+    __tablename__ = "product_orders"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    vendor_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="RESTRICT"), index=True)
+    address_id: Mapped[int] = mapped_column(
+        ForeignKey("delivery_addresses.id", ondelete="RESTRICT")
+    )
+    quantity: Mapped[float] = mapped_column(Float)
+    selected_size: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    selected_color: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    unit_price: Mapped[float] = mapped_column(Float)
+    merchandise_total: Mapped[float] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(
+        String(30), default="placed", server_default="placed", index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    user: Mapped["User"] = relationship(foreign_keys=[user_id])
+    vendor: Mapped["User"] = relationship(foreign_keys=[vendor_id])
+    product: Mapped["Product"] = relationship()
+    address: Mapped["DeliveryAddress"] = relationship()
+    delivery: Mapped[Optional["Delivery"]] = relationship(
+        back_populates="product_order", cascade="all, delete-orphan", uselist=False
+    )
+
+
+class DeliverySettings(Base):
+    """Singleton administrator configuration used when delivery is quoted."""
+
+    __tablename__ = "delivery_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    price_per_100m: Mapped[float] = mapped_column(Float, default=0, server_default="0")
+    provider_name: Mapped[str] = mapped_column(String(150), default="")
+    provider_email: Mapped[str] = mapped_column(String(255), default="")
+    provider_phone: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    communication_details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    updated_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+
+class Delivery(Base):
+    """One delivery per order/vendor, avoiding repeated charges per design item."""
+
+    __tablename__ = "deliveries"
+    __table_args__ = (
+        UniqueConstraint("order_id", "vendor_id", name="uq_delivery_order_vendor"),
+        CheckConstraint(
+            "(order_id IS NOT NULL) <> (product_order_id IS NOT NULL)",
+            name="ck_delivery_exactly_one_order",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    order_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("orders.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    product_order_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("product_orders.id", ondelete="CASCADE"),
+        unique=True, nullable=True, index=True
+    )
+    vendor_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    provider_name: Mapped[str] = mapped_column(String(150))
+    provider_email: Mapped[str] = mapped_column(String(255))
+    provider_phone: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    provider_details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    origin_address: Mapped[str] = mapped_column(String(500))
+    origin_place_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    origin_latitude: Mapped[float] = mapped_column(Float)
+    origin_longitude: Mapped[float] = mapped_column(Float)
+    destination_address: Mapped[str] = mapped_column(String(500))
+    destination_place_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    destination_latitude: Mapped[float] = mapped_column(Float)
+    destination_longitude: Mapped[float] = mapped_column(Float)
+    distance_meters: Mapped[int] = mapped_column(Integer)
+    duration_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    price_per_100m: Mapped[float] = mapped_column(Float)
+    delivery_cost: Mapped[float] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(
+        String(30), default="quote_ready", server_default="quote_ready", index=True
+    )
+    tracking_number: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    tracking_url: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    external_reference: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    admin_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status_updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    order: Mapped[Optional["Order"]] = relationship(back_populates="deliveries")
+    product_order: Mapped[Optional["ProductOrder"]] = relationship(back_populates="delivery")
+    vendor: Mapped["User"] = relationship(foreign_keys=[vendor_id])

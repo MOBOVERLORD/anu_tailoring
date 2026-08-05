@@ -4,6 +4,7 @@ export interface UserProfile {
   email: string
   phone: string | null
   location: string | null
+  vendor_pickup_address: string | null
   role: "customer" | "vendor" | "admin" | "super_admin"
   is_active: boolean
   created_at: string
@@ -44,6 +45,44 @@ export interface DesignInput {
   category: Design["category"]
   garment_type: string
   base_price: number
+}
+
+export type ProductType = "ready_made" | "fabric"
+export type ProductUnit = "piece" | "metre"
+
+export interface Product {
+  id: number
+  vendor_id: number
+  vendor_name: string
+  title: string
+  description: string
+  product_type: ProductType
+  category: Design["category"]
+  garment_type: string | null
+  price: number
+  unit: ProductUnit
+  stock_quantity: number
+  sizes: string[]
+  colors: string[]
+  status: DesignStatus
+  rejection_comment: string | null
+  image_url: string | null
+  images: DesignImage[]
+  created_at: string
+  updated_at: string
+}
+
+export interface ProductInput {
+  title: string
+  description: string
+  product_type: ProductType
+  category: Design["category"]
+  garment_type: string
+  price: number
+  unit: ProductUnit
+  stock_quantity: number
+  sizes: string[]
+  colors: string[]
 }
 
 export interface VendorSummary {
@@ -117,10 +156,59 @@ export type DeliveryAddressInput = Omit<DeliveryAddress, "id" | "user_id">
 
 export type OrderStatus = "pending" | "confirmed" | "fabric_cutting" | "stitching" | "quality_check" | "shipped" | "delivered" | "cancelled"
 
+export type WorkStatus = "awaiting_invoice" | "awaiting_approval" | "awaiting_cloth_payment" | "awaiting_payment_verification" | "awaiting_cloth" | "ready_to_start" | "fabric_cutting" | "stitching" | "quality_check" | "completed" | "rejected" | "cancelled"
+
+export interface OrderComment {
+  id: number
+  author_id: number
+  author_name: string
+  author_role: UserProfile["role"]
+  message: string
+  created_at: string
+}
+
+export interface VendorInvoiceLineItem {
+  id: number
+  name: string
+  description: string | null
+  quantity: number
+  unit_price: number
+  total_amount: number
+}
+
+export interface VendorInvoice {
+  id: number
+  invoice_number: string
+  revision: number
+  service_amount: number
+  cloth_source: "vendor_supplied" | "customer_provided"
+  cloth_type: string
+  cloth_requirement: string
+  cloth_cost: number
+  delivery_cost: number
+  line_items: VendorInvoiceLineItem[]
+  additional_amount: number
+  total_amount: number
+  status: "draft" | "issued" | "approved" | "change_requested"
+  payment_status: "not_required" | "pending" | "submitted" | "paid"
+  payment_reference: string | null
+  cloth_received: boolean
+  cloth_bill_filename: string | null
+  cloth_bill_content_type: string | null
+  cloth_bill_size_bytes: number | null
+  cloth_bill_url: string | null
+  issued_at: string | null
+  approved_at: string | null
+  paid_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface OrderItem {
   id: number
   design: Design
   measurement_profile: MeasurementProfile
+  cloth_source: "vendor_supplied" | "customer_provided"
   fabric_choice: string | null
   custom_instructions: string | null
   measurement_snapshot: {
@@ -130,15 +218,127 @@ export interface OrderItem {
     notes?: string | null
   } | null
   price: number
+  work_status: WorkStatus
+  invoice: VendorInvoice | null
+  comments: OrderComment[]
 }
 
 export interface Order {
   id: number
   total_amount: number
+  service_amount: number
   status: OrderStatus
   tracking_number: string | null
   created_at: string
   customer: UserProfile
   delivery_address: DeliveryAddress
+  deliveries: OrderDelivery[]
   order_items: OrderItem[]
+}
+
+export type DeliveryStatus = "quote_ready" | "booked" | "picked_up" | "in_transit" | "delivered" | "cancelled"
+
+export interface DeliveryQuote {
+  vendor_id: number
+  vendor_name: string
+  distance_meters: number
+  duration_seconds: number | null
+  delivery_cost: number
+  price_per_100m: number
+  provider_name: string
+  quote_token: string
+  expires_at: string
+}
+
+export interface DeliverySettings {
+  price_per_100m: number
+  provider_name: string
+  provider_email: string
+  provider_phone: string | null
+  communication_details: string | null
+  is_active: boolean
+  maps_configured: boolean
+  updated_at: string | null
+}
+
+export interface DeliveryRecord {
+  id: number
+  order_id: number | null
+  product_order_id: number | null
+  order_type: "tailoring" | "product"
+  vendor_id: number
+  vendor_name: string
+  customer_name: string
+  customer_phone: string | null
+  provider_name: string
+  provider_email: string
+  provider_phone: string | null
+  provider_details: string | null
+  origin_address: string
+  destination_address: string
+  distance_meters: number
+  duration_seconds: number | null
+  price_per_100m: number
+  delivery_cost: number
+  status: DeliveryStatus
+  tracking_number: string | null
+  tracking_url: string | null
+  external_reference: string | null
+  admin_notes: string | null
+  status_updated_at: string
+  created_at: string
+  updated_at: string
+}
+
+export interface OrderDelivery {
+  id: number
+  vendor_id: number
+  provider_name: string
+  destination_address: string
+  distance_meters: number
+  duration_seconds: number | null
+  delivery_cost: number
+  status: DeliveryStatus
+  tracking_number: string | null
+  tracking_url: string | null
+}
+
+export interface DeliveryPage {
+  items: DeliveryRecord[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface OrderPage {
+  items: Order[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export type ProductOrderStatus = "placed" | "confirmed" | "packed" | "shipped" | "delivered" | "cancelled"
+
+export interface ProductOrder {
+  id: number
+  product: Product
+  customer: UserProfile
+  delivery_address: DeliveryAddress
+  quantity: number
+  selected_size: string | null
+  selected_color: string | null
+  unit_price: number
+  merchandise_total: number
+  total_amount: number
+  status: ProductOrderStatus
+  delivery: OrderDelivery
+  created_at: string
+  updated_at: string
+}
+
+export interface ProductOrderPage {
+  items: ProductOrder[]
+  total: number
+  limit: number
+  offset: number
 }

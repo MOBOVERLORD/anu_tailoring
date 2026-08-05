@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,15 +14,23 @@ router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
 @router.get("", response_model=NotificationListResponse)
 async def list_notifications(
+    unread_only: bool = False,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    filters = [Notification.user_id == current_user.id]
+    if unread_only:
+        filters.append(Notification.read_at.is_(None))
+
     items = (
         await db.execute(
             select(Notification)
-            .where(Notification.user_id == current_user.id)
+            .where(*filters)
             .order_by(Notification.created_at.desc())
-            .limit(50)
+            .limit(limit)
+            .offset(offset)
         )
     ).scalars().all()
     unread_count = await db.scalar(

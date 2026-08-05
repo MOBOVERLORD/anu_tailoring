@@ -7,14 +7,18 @@ import {
   Plus,
   Search,
   Send,
+  ShoppingBag,
   Sparkles,
   Trash2,
 } from "lucide-react"
 import toast from "react-hot-toast"
+import { Link } from "react-router-dom"
 import { ApiImage } from "@/components/ApiImage"
 import { Dialog } from "@/components/Dialog"
 import { ImageLightbox } from "@/components/ImageLightbox"
+import { AppSelect } from "@/components/ui/AppSelect"
 import { api } from "@/lib/api"
+import { boundedNumber } from "@/lib/formLimits"
 import type { Design, DesignImage, DesignInput, DesignStatus, VendorSummary } from "@/types/api"
 
 const emptyForm: DesignInput = {
@@ -33,6 +37,8 @@ const statusLabels: Record<DesignStatus, string> = {
   approved: "Published",
   rejected: "Needs changes",
 }
+const DESIGN_STATUS_OPTIONS = [{ value: "all", label: "All statuses" }, ...Object.entries(statusLabels).map(([value, label]) => ({ value, label }))]
+const DESIGN_CATEGORY_OPTIONS = [{ value: "women", label: "Women" }, { value: "men", label: "Men" }, { value: "unisex", label: "Unisex" }, { value: "kids", label: "Kids" }]
 
 const VendorWorkspace = () => {
   const [designs, setDesigns] = useState<Design[]>([])
@@ -225,9 +231,7 @@ const VendorWorkspace = () => {
           <h1>Manage your collection</h1>
           <p>Create a design, add 1–10 images, then send it to Anu Tailoring for approval.</p>
         </div>
-        <button className="button button-primary" onClick={openCreate} type="button">
-          <Plus size={18} /> New design
-        </button>
+        <div className="workspace-heading-actions"><Link className="button button-secondary" to="/vendor/products"><ShoppingBag size={17} /> Products for sale</Link><button className="button button-primary" onClick={openCreate} type="button"><Plus size={18} /> New design</button></div>
       </section>
 
       {summary && (
@@ -248,13 +252,7 @@ const VendorWorkspace = () => {
             <span className="sr-only">Search your designs</span>
             <input onChange={(event) => setSearch(event.target.value)} placeholder="Search title, garment, category…" value={search} />
           </label>
-          <select className="select-control" aria-label="Filter designs by status" onChange={(event) => setStatusFilter(event.target.value as "all" | DesignStatus)} value={statusFilter}>
-            <option value="all">All statuses</option>
-            <option value="draft">Draft</option>
-            <option value="submitted">Under review</option>
-            <option value="approved">Published</option>
-            <option value="rejected">Needs changes</option>
-          </select>
+          <AppSelect ariaLabel="Filter designs by status" className="toolbar-select" onValueChange={(value) => setStatusFilter(value as "all" | DesignStatus)} options={DESIGN_STATUS_OPTIONS} value={statusFilter} />
           <span>{visibleDesigns.length} of {designs.length} designs</span>
         </section>
       )}
@@ -289,7 +287,7 @@ const VendorWorkspace = () => {
                       <span className={`status-badge status-${design.status}`}>{statusLabels[design.status]}</span>
                       <h2>{design.title}</h2>
                     </div>
-                    <strong>₹{design.base_price.toLocaleString("en-IN")}</strong>
+                    <strong>Tailoring ₹{design.base_price.toLocaleString("en-IN")}</strong>
                   </div>
                   <p>{design.description}</p>
                   <div className="design-meta">
@@ -414,30 +412,25 @@ const VendorWorkspace = () => {
           <form className="dialog-form form-stack" onSubmit={saveDesign}>
             <div className="field">
               <label htmlFor="design-title">Title</label>
-              <input id="design-title" required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
+              <input id="design-title" maxLength={150} required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
             </div>
             <div className="field">
               <label htmlFor="design-description">Description</label>
-              <textarea id="design-description" minLength={10} required rows={4} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
+              <textarea id="design-description" maxLength={3000} minLength={10} required rows={4} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
             </div>
             <div className="form-grid">
               <div className="field">
                 <label htmlFor="design-category">Category</label>
-                <select id="design-category" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value as DesignInput["category"] })}>
-                  <option value="women">Women</option>
-                  <option value="men">Men</option>
-                  <option value="unisex">Unisex</option>
-                  <option value="kids">Kids</option>
-                </select>
+                <AppSelect id="design-category" onValueChange={(value) => setForm({ ...form, category: value as DesignInput["category"] })} options={DESIGN_CATEGORY_OPTIONS} value={form.category} />
               </div>
               <div className="field">
                 <label htmlFor="garment-type">Garment type</label>
-                <input id="garment-type" placeholder="Kurta, blouse, suit…" required value={form.garment_type} onChange={(event) => setForm({ ...form, garment_type: event.target.value })} />
+                <input id="garment-type" maxLength={50} placeholder="Kurta, blouse, suit…" required value={form.garment_type} onChange={(event) => setForm({ ...form, garment_type: event.target.value })} />
               </div>
             </div>
             <div className="field">
-              <label htmlFor="base-price">Starting price (₹)</label>
-              <input id="base-price" min={1} required type="number" value={form.base_price || ""} onChange={(event) => setForm({ ...form, base_price: Number(event.target.value) })} />
+              <label htmlFor="base-price">Tailoring service price (₹)</label>
+              <input id="base-price" max={1_000_000} min={1} required type="number" value={form.base_price || ""} onChange={(event) => setForm({ ...form, base_price: boundedNumber(event.target.value, 0, 1_000_000) })} />
             </div>
             <div className="dialog-actions">
               <button className="button button-quiet" onClick={() => setFormOpen(false)} type="button">Cancel</button>

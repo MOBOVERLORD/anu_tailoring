@@ -8,7 +8,9 @@ import {
   Ruler,
   Search,
   ShieldCheck,
+  ShoppingBag,
   Store,
+  Truck,
   Trash2,
   UserCheck,
   UserPlus,
@@ -19,19 +21,25 @@ import {
 import toast from "react-hot-toast"
 import { ApiImage } from "@/components/ApiImage"
 import { Dialog } from "@/components/Dialog"
+import { DeliveryManagement } from "@/components/DeliveryManagement"
 import { ImageLightbox } from "@/components/ImageLightbox"
 import MeasurementCategoriesAdmin from "@/components/MeasurementCategoriesAdmin"
-import { api } from "@/lib/api"
+import { ProductApprovals } from "@/components/ProductApprovals"
+import { AppSelect } from "@/components/ui/AppSelect"
+import { api, getCurrentUser } from "@/lib/api"
 import type { Design, DesignImage, UserProfile } from "@/types/api"
 
-type AdminSection = "reviews" | "vendors" | "customers" | "measurements"
+type AdminSection = "reviews" | "products" | "vendors" | "customers" | "measurements" | "delivery"
 type AccountFilter = "all" | "active" | "inactive"
+const ADMIN_CATEGORY_OPTIONS = [{ value: "all", label: "All categories" }, { value: "women", label: "Women" }, { value: "men", label: "Men" }, { value: "unisex", label: "Unisex" }, { value: "kids", label: "Kids" }]
+const ACCOUNT_STATUS_OPTIONS = [{ value: "all", label: "All statuses" }, { value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]
 
 const emptyVendorForm = {
   full_name: "",
   email: "",
   phone: "",
   password: "",
+  pickup_address: "",
 }
 
 const AdminWorkspace = () => {
@@ -50,7 +58,7 @@ const AdminWorkspace = () => {
   const [vendorForm, setVendorForm] = useState(emptyVendorForm)
   const [creatingVendor, setCreatingVendor] = useState(false)
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null)
-  const [userForm, setUserForm] = useState({ full_name: "", phone: "", location: "" })
+  const [userForm, setUserForm] = useState({ full_name: "", phone: "", location: "", vendor_pickup_address: "" })
   const [lightbox, setLightbox] = useState<{ images: DesignImage[]; index: number } | null>(null)
 
   const isSuperAdmin = profile?.role === "super_admin"
@@ -58,7 +66,7 @@ const AdminWorkspace = () => {
   const loadAdmin = useCallback(async () => {
     try {
       const [me, queue, vendorUsers, customerUsers] = await Promise.all([
-        api<UserProfile>("/api/auth/me"),
+        getCurrentUser(),
         api<Design[]>("/api/admin/designs?status=submitted"),
         api<UserProfile[]>("/api/admin/users?role=vendor"),
         api<UserProfile[]>("/api/admin/users?role=customer"),
@@ -160,6 +168,7 @@ const AdminWorkspace = () => {
       full_name: user.full_name,
       phone: user.phone || "",
       location: user.location || "",
+      vendor_pickup_address: user.vendor_pickup_address || "",
     })
   }
 
@@ -238,6 +247,9 @@ const AdminWorkspace = () => {
         <button className={section === "reviews" ? "active" : ""} onClick={() => setSection("reviews")} type="button">
           <ImageIcon size={17} /> Approvals <span>{designs.length}</span>
         </button>
+        <button className={section === "products" ? "active" : ""} onClick={() => setSection("products")} type="button">
+          <ShoppingBag size={17} /> Shop products
+        </button>
         <button className={section === "vendors" ? "active" : ""} onClick={() => setSection("vendors")} type="button">
           <Store size={17} /> Vendors <span>{vendors.length}</span>
         </button>
@@ -247,6 +259,9 @@ const AdminWorkspace = () => {
         <button className={section === "measurements" ? "active" : ""} onClick={() => setSection("measurements")} type="button">
           <Ruler size={17} /> Measurements
         </button>
+        <button className={section === "delivery" ? "active" : ""} onClick={() => setSection("delivery")} type="button">
+          <Truck size={17} /> Delivery
+        </button>
       </nav>
 
       {section === "reviews" ? (
@@ -255,13 +270,7 @@ const AdminWorkspace = () => {
             <div><p className="eyebrow">Approval queue</p><h2>Submitted designs</h2></div>
             <div className="admin-filters">
               <label className="search-field"><Search size={17} /><input aria-label="Search approvals" onChange={(event) => setReviewSearch(event.target.value)} placeholder="Design, vendor, garment…" value={reviewSearch} /></label>
-              <select className="select-control" aria-label="Filter by category" onChange={(event) => setCategoryFilter(event.target.value)} value={categoryFilter}>
-                <option value="all">All categories</option>
-                <option value="women">Women</option>
-                <option value="men">Men</option>
-                <option value="unisex">Unisex</option>
-                <option value="kids">Kids</option>
-              </select>
+              <AppSelect ariaLabel="Filter by category" className="toolbar-select" onValueChange={setCategoryFilter} options={ADMIN_CATEGORY_OPTIONS} value={categoryFilter} />
             </div>
           </div>
 
@@ -288,7 +297,7 @@ const AdminWorkspace = () => {
                     </div>
                     <p>{design.description}</p>
                     <div className="design-meta"><span>{design.category}</span><span>{design.garment_type}</span><span>{design.images.length} images</span></div>
-                    <div className="field"><label htmlFor={`review-comment-${design.id}`}>Reviewer note</label><textarea id={`review-comment-${design.id}`} onChange={(event) => setComments({ ...comments, [design.id]: event.target.value })} placeholder="Required when rejecting; optional when approving." rows={3} value={comments[design.id] || ""} /></div>
+                    <div className="field"><label htmlFor={`review-comment-${design.id}`}>Reviewer note</label><textarea id={`review-comment-${design.id}`} maxLength={2000} onChange={(event) => setComments({ ...comments, [design.id]: event.target.value })} placeholder="Required when rejecting; optional when approving." rows={3} value={comments[design.id] || ""} /></div>
                     <div className="review-actions">
                       <button className="button button-quiet danger" disabled={busyId === design.id} onClick={() => review(design, "rejected")} type="button"><X size={17} /> Reject</button>
                       <button className="button button-primary" disabled={busyId === design.id} onClick={() => review(design, "approved")} type="button">{busyId === design.id ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />} Approve & publish</button>
@@ -299,17 +308,19 @@ const AdminWorkspace = () => {
             </div>
           )}
         </section>
+      ) : section === "products" ? (
+        <ProductApprovals />
       ) : section === "measurements" ? (
         <MeasurementCategoriesAdmin />
+      ) : section === "delivery" ? (
+        <DeliveryManagement isSuperAdmin={isSuperAdmin} />
       ) : (
         <section className="admin-panel">
           <div className="admin-panel-heading">
             <div><p className="eyebrow">Account directory</p><h2>{section === "vendors" ? "Vendor accounts" : "Customer accounts"}</h2></div>
             <div className="admin-filters">
               <label className="search-field"><Search size={17} /><input aria-label="Search accounts" onChange={(event) => setAccountSearch(event.target.value)} placeholder="Name, email, phone…" value={accountSearch} /></label>
-              <select className="select-control" aria-label="Filter by account status" onChange={(event) => setAccountFilter(event.target.value as AccountFilter)} value={accountFilter}>
-                <option value="all">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option>
-              </select>
+              <AppSelect ariaLabel="Filter by account status" className="toolbar-select" onValueChange={(value) => setAccountFilter(value as AccountFilter)} options={ACCOUNT_STATUS_OPTIONS} value={accountFilter} />
             </div>
           </div>
 
@@ -320,10 +331,11 @@ const AdminWorkspace = () => {
               <aside className="vendor-onboarding-card">
                 <div><UserPlus size={20} /><h3>Add verified vendor</h3><p>Create access after completing offline verification.</p></div>
                 <form className="form-stack" onSubmit={createVendor}>
-                  <div className="field"><label htmlFor="vendor-name">Vendor name</label><input id="vendor-name" minLength={2} required value={vendorForm.full_name} onChange={(event) => setVendorForm({ ...vendorForm, full_name: event.target.value })} /></div>
-                  <div className="field"><label htmlFor="vendor-email">Email</label><input autoComplete="off" id="vendor-email" required type="email" value={vendorForm.email} onChange={(event) => setVendorForm({ ...vendorForm, email: event.target.value })} /></div>
-                  <div className="field"><label htmlFor="vendor-phone">Phone</label><input id="vendor-phone" required type="tel" value={vendorForm.phone} onChange={(event) => setVendorForm({ ...vendorForm, phone: event.target.value })} /></div>
-                  <div className="field"><label htmlFor="vendor-password">Temporary password</label><input autoComplete="new-password" id="vendor-password" minLength={8} required type="password" value={vendorForm.password} onChange={(event) => setVendorForm({ ...vendorForm, password: event.target.value })} /><small>At least 8 characters with a letter and number.</small></div>
+                  <div className="field"><label htmlFor="vendor-name">Vendor name</label><input id="vendor-name" maxLength={100} minLength={2} required value={vendorForm.full_name} onChange={(event) => setVendorForm({ ...vendorForm, full_name: event.target.value })} /></div>
+                  <div className="field"><label htmlFor="vendor-email">Email</label><input autoComplete="off" id="vendor-email" maxLength={254} required type="email" value={vendorForm.email} onChange={(event) => setVendorForm({ ...vendorForm, email: event.target.value })} /></div>
+                  <div className="field"><label htmlFor="vendor-phone">Phone</label><input id="vendor-phone" maxLength={20} required type="tel" value={vendorForm.phone} onChange={(event) => setVendorForm({ ...vendorForm, phone: event.target.value })} /></div>
+                  <div className="field"><label htmlFor="vendor-pickup">Verified pickup address</label><textarea id="vendor-pickup" maxLength={500} minLength={10} onChange={(event) => setVendorForm({ ...vendorForm, pickup_address: event.target.value })} placeholder="Shop number, street, area, city, state and PIN code" required rows={3} value={vendorForm.pickup_address} /><small>Google verifies this location and uses it as the delivery route origin.</small></div>
+                  <div className="field"><label htmlFor="vendor-password">Temporary password</label><input autoComplete="new-password" id="vendor-password" maxLength={128} minLength={8} required type="password" value={vendorForm.password} onChange={(event) => setVendorForm({ ...vendorForm, password: event.target.value })} /><small>At least 8 characters with a letter and number.</small></div>
                   <button className="button button-primary button-wide" disabled={creatingVendor} type="submit"><UserPlus size={17} /> {creatingVendor ? "Creating…" : "Create vendor"}</button>
                 </form>
               </aside>
@@ -353,9 +365,10 @@ const AdminWorkspace = () => {
       {editingUser && (
         <Dialog description={`Email remains locked: ${editingUser.email}`} onClose={() => setEditingUser(null)} title={`Edit ${editingUser.role}`}>
           <form className="dialog-form form-stack" onSubmit={saveUser}>
-            <div className="field"><label htmlFor="managed-name">Name</label><input id="managed-name" minLength={2} required value={userForm.full_name} onChange={(event) => setUserForm({ ...userForm, full_name: event.target.value })} /></div>
-            <div className="field"><label htmlFor="managed-phone">Phone</label><input id="managed-phone" type="tel" value={userForm.phone} onChange={(event) => setUserForm({ ...userForm, phone: event.target.value })} /></div>
-            <div className="field"><label htmlFor="managed-location">Location</label><input id="managed-location" value={userForm.location} onChange={(event) => setUserForm({ ...userForm, location: event.target.value })} /></div>
+            <div className="field"><label htmlFor="managed-name">Name</label><input id="managed-name" maxLength={100} minLength={2} required value={userForm.full_name} onChange={(event) => setUserForm({ ...userForm, full_name: event.target.value })} /></div>
+            <div className="field"><label htmlFor="managed-phone">Phone</label><input id="managed-phone" maxLength={20} type="tel" value={userForm.phone} onChange={(event) => setUserForm({ ...userForm, phone: event.target.value })} /></div>
+            <div className="field"><label htmlFor="managed-location">Location</label><input id="managed-location" maxLength={150} value={userForm.location} onChange={(event) => setUserForm({ ...userForm, location: event.target.value })} /></div>
+            {editingUser.role === "vendor" && <div className="field"><label htmlFor="managed-pickup">Verified delivery pickup address</label><textarea id="managed-pickup" maxLength={500} minLength={10} onChange={(event) => setUserForm({ ...userForm, vendor_pickup_address: event.target.value })} required rows={3} value={userForm.vendor_pickup_address} /><small>Changing this re-verifies the route origin with Google and affects future delivery quotes only.</small></div>}
             <div className="dialog-actions"><button className="button button-quiet" onClick={() => setEditingUser(null)} type="button">Cancel</button><button className="button button-primary" disabled={busyId === editingUser.id} type="submit">Save changes</button></div>
           </form>
         </Dialog>

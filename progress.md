@@ -1,11 +1,144 @@
 # Anu Tailoring — Progress
 
-Last updated: 2026-07-31
+Last updated: 2026-08-02
 
 ## Current milestone
 
-The first multi-vendor design publishing workflow is implemented across the
-React frontend, FastAPI backend, PostgreSQL, and Google Cloud Storage.
+The multi-vendor marketplace now covers design publishing plus the first
+customer/vendor order-invoice workflow across React, FastAPI, and PostgreSQL.
+
+### Distance-based delivery management (2026-08-02)
+
+- Removed delivery-price entry from the vendor invoice. Vendor invoices now
+  contain tailoring, cloth, and agreed additional products only.
+- Added backend-only Google Maps Platform integration:
+  - Geocoding verifies administrator-managed vendor pickup addresses and saved
+    customer delivery addresses.
+  - Routes API Compute Route Matrix supplies driving distance and duration.
+  - Coordinates are refreshed after 29 days while Google Place IDs are retained.
+- Added one delivery record per order/vendor so a multi-design order does not
+  charge the same vendor route repeatedly.
+- Delivery cost is calculated as every started 100-metre block multiplied by
+  the administrator's configured price per 0.1 km.
+- Added a signed 10-minute delivery quote to reuse the checkout route result
+  securely when the order is placed, avoiding a duplicate Google API call.
+- Added a Delivery administration screen with provider name, communication
+  email/phone/details, activation, price-per-100m control, route summaries,
+  delivery filtering, status updates, tracking numbers/URLs, provider
+  references, and internal notes.
+- Super admins control provider and pricing settings; admins can operate and
+  track deliveries. Customer and vendor order details show the calculated
+  distance, charge, provider, current status, and tracking link.
+- Google Maps credentials remain server-only through the ignored `.env` locally
+  and Secret Manager on Cloud Run. React never calls Google services directly.
+- Added startup compatibility for vendor/customer coordinates and new delivery
+  tables/indexes, plus `scripts/verify_delivery_management.py`.
+
+### UI and UX refinement (2026-08-01)
+
+- Added a persistent, role-aware mobile navigation bar so customers, vendors,
+  and administrators can reach their primary destinations without opening a
+  temporary menu.
+- Added an accessible skip link, consistent keyboard focus indicators, route-
+  specific browser titles, clearer role names, relative notification times,
+  and Escape-key handling for header popovers.
+- Upgraded every shared modal with initial focus, focus containment, Escape and
+  backdrop dismissal, background scroll locking, labelled descriptions, and
+  focus restoration when the dialog closes.
+- Added a reusable confirmation dialog and applied it to payment approval,
+  payment verification, cloth receipt, tailoring start, and administrator order
+  status changes to prevent accidental financial or workflow actions.
+- Added an order progress tracker that explains the current stage across vendor
+  quote, customer approval, cloth readiness, and tailoring.
+- Improved registration with independent password visibility controls, live
+  password requirement feedback, and an immediate password-match state.
+- Clarified that order search filters the currently loaded page, and renamed the
+  administrator status action to make its consequence clearer.
+- Fixed small-screen authentication sizing, desktop authentication overflow,
+  and shared loading-spinner alignment. Public authentication screens were
+  visually checked in light and dark themes at desktop and mobile sizes.
+
+### Performance and security hardening (2026-08-01)
+
+- Replaced unbounded order-list responses with paginated customer, vendor, and
+  administrator APIs (20 rows per UI request, backend maximum 100) and added a
+  load-more control that reports loaded and total order counts.
+- Removed order-creation N+1 queries: all requested designs and measurement
+  profiles are now fetched in two bounded queries, with ownership, approval,
+  and active-vendor checks applied before the transaction is written.
+- Vendor order queries now load only that vendor's items, preventing unrelated
+  marketplace items from entering memory or an accidental response.
+- Added PostgreSQL indexes for the hot order, item, comment, notification, and
+  vendor-design list paths. Startup compatibility creates them on existing DBs.
+- Added row locks around invoice/payment/cloth/job state transitions and invoice
+  revision checks so double-clicks or stale browser tabs cannot silently repeat
+  or overwrite workflow actions.
+- Tightened invoice input to two decimal places, capped variable invoice charges,
+  rounded calculated totals, restricted payment-reference characters, and
+  sanitized uploaded proof filenames.
+- Private GCS image and cloth-bill responses now use opaque ETags and private
+  cache validators, avoiding repeat bucket downloads while retaining an
+  authenticated backend authorization check.
+- JWTs now validate issuer and audience and include issued-at metadata. Unknown
+  login emails still perform a password hash verification to reduce timing-based
+  account enumeration.
+- Access tokens moved from persistent local storage to per-tab session storage.
+  Proactive refresh runs only for a visible, recently active UI; closing the tab
+  no longer leaves a reusable JavaScript token behind.
+- Active device sessions are capped at five per user, expired sessions are
+  cleaned up, authentication responses are non-cacheable, and production gets
+  HSTS, CSP, frame, MIME, referrer, and browser-permission security headers.
+- Shared current-user requests are cached/deduplicated in the UI. Notification
+  polling no longer restarts on navigation, pauses in hidden tabs, prevents
+  overlapping requests, and refreshes on return to the tab.
+
+### Vendor order and invoice milestone (2026-08-01)
+
+- Rebuilt the shared Order Centre around explicit expandable order cards, so
+  vendors, customers, and administrators can open each order and inspect every
+  design, selected measurement snapshot, customer note, and delivery address.
+- Clarified marketplace pricing throughout the catalog, design details,
+  checkout, vendor workspace, and orders: a design's base price is the
+  tailoring service charge only, not the complete job cost.
+- Added a per-order-item vendor invoice workflow with printable invoice layout:
+  - Tailoring service price is carried into the invoice and is read-only.
+  - Vendor separately enters delivery cost and, when applicable, cloth cost.
+  - Vendor must always specify cloth type and a detailed cloth requirement
+    based on the selected measurements, including when the customer supplies it.
+  - Invoice drafts stay private until the vendor sends them; issued/approved
+    invoices cannot be silently edited. Customers can approve or request
+    changes with a comment.
+- Added both cloth fulfilment paths:
+  - Vendor-supplied cloth with a cost requires customer invoice approval,
+    payment-reference submission, and vendor payment verification before work.
+  - Customer-supplied cloth has zero cloth cost and requires vendor confirmation
+    that the cloth was received before work.
+  - The backend enforces every approval/payment/cloth gate before the vendor can
+    start the tailoring job.
+- Added an order conversation shared by the related customer, vendor, and
+  administrators, with notifications sent to the other party.
+- Added persisted `vendor_invoices`, `order_comments`, and per-item work status,
+  plus startup compatibility for existing local databases.
+- Added `scripts/verify_order_invoice.py`, a rollback-only live database
+  regression test covering vendor-supplied and customer-supplied cloth flows.
+- Fixed stale SQLAlchemy relationship caching found by the regression test, so
+  a newly created invoice is immediately available to the send/approval steps.
+- Customer now selects `vendor_supplied` or `customer_provided` cloth while
+  placing each design order. The choice is persisted on the order item and is
+  read-only for the vendor.
+- Vendor invoice drafts now support up to 25 additional itemized product/cost
+  rows with name, optional description, quantity, unit price, row total, and an
+  additional-items subtotal included in the invoice total.
+- Vendor-supplied cloth invoices now support one private cloth-bill proof:
+  - Vendor uploads a PDF, JPEG, PNG, or WebP file up to 5 MB after invoice approval.
+  - The browser uploads only to FastAPI; FastAPI validates and stores the proof
+    under `vendors/{vendor_id}/orders/{order_id}/invoices/{invoice_id}/cloth-bills/`.
+  - Only the related customer/vendor or an administrator can read the file
+    through the authenticated backend proxy; bucket and object details stay private.
+  - The customer cannot submit a cloth payment reference until proof is attached.
+  - Replacing proof updates the invoice and best-effort deletes the old bucket object.
+- Startup compatibility now adds the customer cloth decision and proof metadata
+  to existing databases; normalized invoice line-item storage is created automatically.
 
 ### Multi-vendor marketplace milestone (2026-07-31)
 
@@ -68,6 +201,52 @@ React frontend, FastAPI backend, PostgreSQL, and Google Cloud Storage.
 
 ### Completed
 
+- Reorganized the customer Order Centre into three responsive views:
+  **In progress**, **Completed**, and **Cancelled / rejected**, consistently
+  grouping both tailoring and shop orders. Wishlist remains in the main design
+  catalog and is intentionally separate from orders. Vendor/admin operational
+  order filtering is unchanged.
+- Renamed the per-item order conversation to **Order chat** and added secured,
+  incremental five-second refresh while an expanded order is open. Messages
+  remain persisted, notify the other party, pause polling in background tabs,
+  and recover automatically after temporary request failures.
+- Added guarded tailoring-order cancellation and vendor rejection:
+  - Customers can cancel an entire tailoring order before any vendor invoice is
+    accepted; the reason is required, stored in each item conversation, and
+    sent to affected vendors.
+  - Vendors can reject only their own design item before its invoice is
+    accepted, with a required reason. Multi-vendor order data remains private.
+  - Rejected/cancelled items remain visible for audit history but are removed
+    from active totals and cannot continue through invoice or tailoring steps.
+  - The affected delivery is cancelled when a vendor has no remaining active
+    items; full customer cancellation closes all deliveries.
+  - Backend enforcement prevents customers, vendors, and administrators from
+    cancelling after invoice approval, and cancelled orders cannot be reopened.
+  - Rollback-only workflow coverage verifies both allowed paths and the
+    invoice-acceptance cancellation lock.
+- Added a moderated vendor shop for physical clothing and fabric sales:
+  - Vendors can create ready-made or fabric product drafts with category,
+    garment/fabric style, price per piece/metre, available stock, optional
+    sizes and colours, and 1–10 private images up to 2 MB each.
+  - Product images use the same backend-only private GCS integration under
+    `vendors/{vendor_id}/products/{product_id}/`; deleting an unreferenced
+    product removes its bucket objects, while ordered products are retained.
+  - Editing an approved product returns it to draft; vendors submit products
+    to a separate Admin shop queue, where admins approve or reject with a
+    required reason. Vendors receive status notifications.
+  - Customers can search/filter approved in-stock products, browse and zoom
+    every image, choose quantity/size/colour/address, request the automatic
+    Google Maps delivery quote, see a product + delivery total, and order.
+  - Checkout locks the product row, validates the signed delivery quote and
+    selected variants, reserves stock transactionally, and rejects stale or
+    insufficient-stock requests.
+  - Customer, vendor, and admin Order Centre views now include shop orders.
+    Customers can cancel newly placed orders; vendors/admins progress them
+    through confirmed, packed, shipped, and delivered states. Cancellation
+    restores stock, and shipping/delivery updates the linked delivery record.
+  - Admin Delivery Management distinguishes shop orders from tailoring orders.
+  - Added live schema/API smoke coverage in
+    `scripts/verify_product_shop.py`.
 - Responsive login screen with Anu Tailoring brand mark, icons, password visibility control, loading/error feedback, and light/dark themes.
 - Login accepts existing passwords without applying registration-length rules;
   password-strength validation remains limited to account creation.
@@ -98,7 +277,12 @@ React frontend, FastAPI backend, PostgreSQL, and Google Cloud Storage.
   - Men’s garment presets: kurta, shirt, trouser/pyjama, sherwani.
   - Garment-specific measurement fields, inches/cm, fit notes, and create/edit/delete actions.
   - Multiple delivery addresses, default-address handling, and create/edit/delete actions.
-- Session expiry clears local tokens and returns the customer to sign-in.
+- Session expiry clears browser-session tokens and returns the customer to sign-in.
+- Authentication now uses 10-minute access tokens and rotating 30-minute refresh
+  sessions. Refresh tokens are stored only in an `HttpOnly`, `SameSite=Strict`
+  cookie (`Secure` in production), automatically rotated while the UI is active,
+  and never returned to or stored by JavaScript. Logout revokes the persisted
+  server session immediately, so already-issued access tokens are rejected.
 - Backend additions:
   - `User.location`.
   - `PUT /api/auth/me` for editable profile fields.
@@ -120,6 +304,39 @@ React frontend, FastAPI backend, PostgreSQL, and Google Cloud Storage.
   - `DATABASE_URL` can target Cloud SQL without changing local PostgreSQL settings.
   - `.env` is excluded from Docker and gcloud source uploads.
   - `deploy-gcp.cmd` / `npm run deploy:gcp` provide repeatable Cloud Run source deployments.
+- Vendor purchasing and sales workspaces are now separated cleanly:
+  - Vendors can buy published designs, clothes, and fabric from other vendors.
+  - Backend ownership checks reject attempts to buy a vendor's own design or product.
+  - `/orders` is the vendor's personal purchase history and uses the same
+    in-progress/completed/cancelled views as a customer account.
+  - `/vendor/sales-orders` is the separate fulfilment workspace for tailoring
+    and shop orders placed with that vendor, with dedicated desktop and mobile navigation.
+  - Invoice, rejection, payment, cancellation, notification, and fulfilment
+    controls are based on order ownership rather than the account role alone.
+- Vendor product creation UI was redesigned into compact listing, pricing and
+  inventory, and customer-option sections. It now has clearer required fields,
+  option chips, responsive columns, and a sticky Cancel/Create action bar.
+  - Vendors can now select and preview 1–10 product images directly while
+    creating or editing a listing; files remain limited to JPEG/PNG/WebP and
+    2 MB each, and all uploads continue through the authenticated backend.
+  - The editor offers **Save draft** and **Save & submit**. Submission sends
+    product details and images to the existing administrator approval queue;
+    the product is not published until approved, and later image edits return
+    an approved product to draft for re-verification.
+- Increased the inner spacing around the vendor invoice creation prompt so its
+  content and action no longer touch the expanded order-card edges.
+- Order chat is WebSocket-first:
+  - Browser clients exchange their access token for a 30-second ticket bound to
+    one order item; access tokens are never placed in the socket URL.
+  - Messages remain persisted in PostgreSQL and the connection automatically
+    reconnects and resumes after the latest received message.
+  - Active sessions and order ownership are checked on the backend, and logout
+    invalidates a connected chat shortly afterwards.
+  - Vite proxies WebSocket upgrades locally; the Cloud Run deployment command
+    configures a 60-minute request timeout and best-effort session affinity.
+  - Chat presentation now uses readable 14px message text, content-sized
+    customer/vendor bubbles, clearer sender-role-time metadata, a larger
+    conversation viewport, and a responsive composer in both themes.
 
 ## Measurement reference notes
 
@@ -129,26 +346,68 @@ The presets follow Indian vocational tailoring material rather than one universa
 - Bharat Skills men’s-wear material: chest, waist, hip, shoulder, neck, bicep, sleeve, shirt length, thigh, and outseam.
 - Bharat Skills dressmaking material: natural waist, full length, shoulder, sleeve, bust/chest, hip, neck, inner/outer leg, rise, knee and bottom round.
 
+## Product detail reference refinement
+
+- Reworked the shop product dialog around the reviewed UI Design Daily product-info reference while retaining Anu Tailoring's warm editorial theme.
+- Added a larger image-led gallery with full-size affordance, image count, thumbnail hover feedback, and existing lightbox support.
+- Strengthened the purchasing hierarchy with verified listing and vendor context, prominent pricing, clear in-stock/low-stock feedback, product facts, and a separated option-selection area.
+- Made delivery calculation the primary full-width action before order placement, without changing backend pricing, permission, or delivery-quote rules.
+- Added single-column tablet/mobile behavior with reduced dialog spacing and a shorter image aspect ratio.
+
+## Vendor product editor refinement
+
+- Reworked the vendor add/edit product dialog around the reviewed OS ZA e-commerce CMS reference while preserving Anu Tailoring's theme and moderation workflow.
+- Expanded the editor into a responsive CMS-style layout: product details, customer options, pricing, and stock use the main column; photos and classification use a focused side panel.
+- Promoted the first uploaded image to a large labelled shop-cover preview, with compact previews for the remaining images and a clearer add-more-images control.
+- Replaced comma-separated ready-made size entry with reference-style selectable XS–XXL pills and an expandable custom-size control. Removed colour variants from both the vendor editor and customer checkout; edited products now save with no colour variants.
+- Kept Save draft and Save & submit as distinct sticky actions. Submitting still requires an image and routes the complete listing through administrator verification.
+- Added tablet and mobile fallbacks that collapse the editor cleanly without changing product validation or backend APIs.
+
+## Form hardening and typography
+
+- Added shared finite-number handling and explicit UI maximums for product/design prices, inventory, checkout quantity, tailoring measurements, invoice costs and quantities, delivery pricing, and measurement-category ordering. Oversized or non-finite input is clamped before it reaches application state; matching backend bounds remain authoritative.
+- Added practical text limits across product/design descriptions, profiles, delivery addresses, authentication, vendor administration, measurement notes/categories, invoices, and delivery settings, plus a DOM-level default limit for any future text field that omits one. Product descriptions now show `current / 3,000` instead of an unbounded minimum-only counter.
+- Strengthened delivery-address backend validation for field lengths, normalized phone numbers, and six-digit Indian PIN codes.
+- Unified native selects across forms and toolbars with the same themed height, spacing, chevron, hover/focus, disabled, option, and dark-mode treatment.
+- Replaced all remaining native `<select>` elements with one accessible Radix-based `AppSelect`. Open menus now use application-controlled surfaces, selected/check states, keyboard navigation, collision-aware portals, and matching light/dark styling instead of the Windows-native blue option popup.
+- Replaced the previous Inter/Georgia stack with bundled Manrope Variable for interface text and Fraunces Variable for editorial headings. Font files ship with the frontend build, so deployed pages do not make runtime requests to Google Fonts.
+
+## Notification inbox and activity history
+
+- Changed the header notification popover into an unread-only inbox. Opening a notification removes it immediately, and Mark all read clears the list and badge.
+- Added an unread-only filter, a focused unread index, and bounded pagination to the notifications API, keeping the lightweight header poll separate from full account history retrieval.
+- Added an Activity log section under Profile & settings with read/unread state, timestamps, linked destinations, and progressive loading for older notifications.
+- Added a direct View activity log action to the notification popover and synchronized notification changes between the header and profile without waiting for the next poll.
+
 ## Validation
 
 - `npm run build` — passing.
 - `npm run lint` — passing with two existing Fast Refresh advisory warnings in shared component/context files.
+- `npm audit --omit=dev` — reports the existing React Router RSC-mode CSRF advisory (`GHSA-qwww-vcr4-c8h2`); no automatic dependency upgrade was applied during the form/UI pass.
 - Python source compilation — passing.
-- A live backend integration run was not performed in this task because the available bundled Python runtime does not contain the project’s FastAPI/SQLAlchemy packages.
+- FastAPI OpenAPI registration — all new order invoice/comment routes present.
+- Live PostgreSQL startup/migration and authentication regression — passing.
+- Live rollback-only invoice workflow regression — passing for both
+  vendor-supplied cloth/payment and customer-supplied cloth/receipt gates,
+  including additional line-item totals and rejection of payment without proof.
+- Paginated order schemas, invoice revision metadata, JWT issuer/audience checks,
+  security headers, and private object cache validators compile and register.
+- Product-shop PostgreSQL migration and administrator API smoke test — passing.
+- WebSocket ticket authentication and handshake regression — passing.
 
 ## Recommended next milestone
 
 1. Replace startup compatibility statements with versioned Alembic migrations
    before production data exists.
-2. Add integration tests for role authorization, backend upload completion,
-   moderation transitions, bucket cleanup, and notification ownership.
+2. Add API-level integration tests for role authorization, backend upload
+   completion, moderation transitions, bucket cleanup, and notification ownership.
 3. Add per-measurement “how to measure” guidance and diagrams.
 4. Add a transactional outbox/retry worker for bucket deletion, vendor business
    profiles, admin audit logs, password reset, and forced temporary-password change.
-5. Add pagination, search indexes, NUMERIC pricing, image thumbnails, and CDN
-   delivery before the catalog grows.
-6. Begin the garment customization and order flow after validating the
-   marketplace with real vendor designs.
+5. Move persisted monetary columns from FLOAT to PostgreSQL NUMERIC, generate
+   image thumbnails, and add server-side catalog/order search before large-scale use.
+6. Integrate a payment gateway and replace the current offline payment-reference
+   verification flow before accepting production payments.
 
 ## Resume prompt
 

@@ -1,4 +1,5 @@
 from functools import lru_cache
+import hashlib
 from pathlib import PurePath
 
 from fastapi import HTTPException, status
@@ -91,6 +92,12 @@ def bucket_name() -> str:
     return settings.GCS_BUCKET_NAME
 
 
+def private_object_etag(object_name: str) -> str:
+    """Stable opaque validator without exposing the private GCS object path."""
+    digest = hashlib.sha256(object_name.encode("utf-8")).hexdigest()[:32]
+    return f'"{digest}"'
+
+
 def safe_extension(filename: str, content_type: str) -> str:
     supported = {
         "image/jpeg": ".jpg",
@@ -111,6 +118,35 @@ def design_image_object_name(
     return f"vendors/{vendor_id}/designs/{design_id}/{image_key}{extension}"
 
 
+def product_image_object_name(
+    vendor_id: int,
+    product_id: int,
+    image_key: str,
+    extension: str,
+) -> str:
+    """Keep sale-product media isolated from tailoring design media."""
+    return f"vendors/{vendor_id}/products/{product_id}/{image_key}{extension}"
+
+
+def invoice_attachment_object_name(
+    vendor_id: int,
+    order_id: int,
+    invoice_id: int,
+    attachment_key: str,
+    content_type: str,
+) -> str:
+    extensions = {
+        "application/pdf": ".pdf",
+        "image/jpeg": ".jpg",
+        "image/png": ".png",
+        "image/webp": ".webp",
+    }
+    return (
+        f"vendors/{vendor_id}/orders/{order_id}/invoices/{invoice_id}/"
+        f"cloth-bills/{attachment_key}{extensions[content_type]}"
+    )
+
+
 def validate_image_bytes(data: bytes, content_type: str) -> None:
     signatures = {
         "image/jpeg": lambda value: value.startswith(b"\xff\xd8\xff"),
@@ -129,6 +165,22 @@ def validate_image_bytes(data: bytes, content_type: str) -> None:
         )
 
 
+def validate_invoice_attachment_bytes(data: bytes, content_type: str) -> None:
+    if content_type == "application/pdf":
+        valid = data.startswith(b"%PDF-")
+    else:
+        try:
+            validate_image_bytes(data, content_type)
+            valid = True
+        except HTTPException:
+            valid = False
+    if not valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The cloth bill content does not match its declared file type",
+        )
+
+
 def upload_image_object(object_name: str, content_type: str, data: bytes) -> None:
     try:
         client = _storage_client()
@@ -140,6 +192,19 @@ def upload_image_object(object_name: str, content_type: str, data: bytes) -> Non
         )
     except Exception as exc:
         _raise_storage_error("upload the image", exc)
+
+
+def upload_invoice_attachment(object_name: str, content_type: str, data: bytes) -> None:
+    try:
+        client = _storage_client()
+        blob = client.bucket(bucket_name()).blob(object_name)
+        blob.upload_from_string(
+            data,
+            content_type=content_type,
+            if_generation_match=0,
+        )
+    except Exception as exc:
+        _raise_storage_error("upload the cloth bill", exc)
 
 
 def download_image_object(object_name: str) -> bytes:
@@ -154,6 +219,20 @@ def download_image_object(object_name: str) -> bytes:
                 detail="Image file was not found",
             ) from exc
         _raise_storage_error("download the image", exc)
+
+
+def download_invoice_attachment(object_name: str) -> bytes:
+    try:
+        client = _storage_client()
+        blob = client.bucket(bucket_name()).blob(object_name)
+        return blob.download_as_bytes()
+    except Exception as exc:
+        if type(exc).__name__ == "NotFound":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Cloth bill file was not found",
+            ) from exc
+        _raise_storage_error("download the cloth bill", exc)
 
 
 def delete_objects(object_names: list[str]) -> None:

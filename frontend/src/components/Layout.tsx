@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react"
-import { Bell, CheckCheck, Heart, LogOut, Menu, PackageCheck, ShieldCheck, Store, UserRound, X } from "lucide-react"
+import { Bell, CheckCheck, ChevronRight, ClipboardList, Heart, LayoutGrid, LogOut, PackageCheck, ShieldCheck, ShoppingBag, Store, UserRound } from "lucide-react"
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { Toaster, toast } from "react-hot-toast"
-import { api, clearSession, getAccessToken, onAuthChange } from "@/lib/api"
+import { api, closeSession, getAccessToken, getCurrentUser, onAuthChange } from "@/lib/api"
 import type { NotificationList, UserProfile } from "@/types/api"
 import { Brand } from "./Brand"
 import { ModeToggle } from "./ThemeToggle"
@@ -16,7 +16,6 @@ const Layout = () => {
     items: [],
     unread_count: 0,
   })
-  const [mobileOpen, setMobileOpen] = useState(false)
   const profileMenu = useRef<HTMLDivElement>(null)
   const notificationMenu = useRef<HTMLDivElement>(null)
   const location = useLocation()
@@ -26,9 +25,24 @@ const Layout = () => {
 
   useEffect(() => {
     setIsAuthenticated(Boolean(getAccessToken()))
-    setMobileOpen(false)
     setProfileOpen(false)
     setNotificationsOpen(false)
+  }, [location.pathname])
+
+  useEffect(() => {
+    const titles: Record<string, string> = {
+      "/": "Designs",
+      "/login": "Sign in",
+      "/register": "Create account",
+      "/orders": "Orders",
+      "/shop": "Shop",
+      "/profile": "Profile & settings",
+      "/vendor": "Vendor studio",
+      "/vendor/products": "Vendor products",
+      "/vendor/sales-orders": "Vendor sales orders",
+      "/admin": "Administration",
+    }
+    document.title = `${titles[location.pathname] || "Anu Tailoring"} · Anu Tailoring`
   }, [location.pathname])
 
   useEffect(() => {
@@ -36,8 +50,8 @@ const Layout = () => {
       setProfile(null)
       return
     }
-    api<UserProfile>("/api/auth/me").then(setProfile).catch(() => setProfile(null))
-  }, [isAuthenticated, location.pathname])
+    getCurrentUser().then(setProfile).catch(() => setProfile(null))
+  }, [isAuthenticated])
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -45,34 +59,55 @@ const Layout = () => {
       return
     }
     let active = true
+    let requestInFlight = false
     const loadNotifications = () => {
-      api<NotificationList>("/api/notifications")
+      if (document.visibilityState !== "visible" || requestInFlight) return
+      requestInFlight = true
+      api<NotificationList>("/api/notifications?unread_only=true&limit=50")
         .then((result) => {
-          if (active) setNotifications(result)
+          if (active) {
+            const unreadItems = result.items.filter((item) => !item.read_at)
+            setNotifications({ items: unreadItems, unread_count: result.unread_count })
+          }
         })
         .catch(() => {
           // A temporary notification failure should not interrupt navigation.
         })
+        .finally(() => { requestInFlight = false })
     }
     loadNotifications()
-    const interval = window.setInterval(loadNotifications, 30_000)
+    const interval = window.setInterval(loadNotifications, 60_000)
+    document.addEventListener("visibilitychange", loadNotifications)
+    window.addEventListener("notifications:changed", loadNotifications)
     return () => {
       active = false
       window.clearInterval(interval)
+      document.removeEventListener("visibilitychange", loadNotifications)
+      window.removeEventListener("notifications:changed", loadNotifications)
     }
-  }, [isAuthenticated, location.pathname])
+  }, [isAuthenticated])
 
   useEffect(() => {
     const closeMenu = (event: MouseEvent) => {
       if (!profileMenu.current?.contains(event.target as Node)) setProfileOpen(false)
       if (!notificationMenu.current?.contains(event.target as Node)) setNotificationsOpen(false)
     }
+    const closeWithEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setProfileOpen(false)
+        setNotificationsOpen(false)
+      }
+    }
     document.addEventListener("mousedown", closeMenu)
-    return () => document.removeEventListener("mousedown", closeMenu)
+    document.addEventListener("keydown", closeWithEscape)
+    return () => {
+      document.removeEventListener("mousedown", closeMenu)
+      document.removeEventListener("keydown", closeWithEscape)
+    }
   }, [])
 
-  const handleLogout = () => {
-    clearSession()
+  const handleLogout = async () => {
+    await closeSession()
     toast.success("You’re signed out")
     navigate("/login")
   }
@@ -80,10 +115,8 @@ const Layout = () => {
   const markAllRead = async () => {
     try {
       await api("/api/notifications/read-all", { method: "POST" })
-      setNotifications((current) => ({
-        unread_count: 0,
-        items: current.items.map((item) => ({ ...item, read_at: item.read_at || new Date().toISOString() })),
-      }))
+      setNotifications({ unread_count: 0, items: [] })
+      window.dispatchEvent(new Event("notifications:changed"))
     } catch (error) {
       toast.error((error as Error).message)
     }
@@ -91,17 +124,14 @@ const Layout = () => {
 
   const openNotification = async (notificationId: number, link: string | null) => {
     const item = notifications.items.find((notification) => notification.id === notificationId)
-    if (item && !item.read_at) {
+    if (item) {
       try {
         await api(`/api/notifications/${notificationId}/read`, { method: "POST" })
         setNotifications((current) => ({
           unread_count: Math.max(0, current.unread_count - 1),
-          items: current.items.map((notification) =>
-            notification.id === notificationId
-              ? { ...notification, read_at: new Date().toISOString() }
-              : notification
-          ),
+          items: current.items.filter((notification) => notification.id !== notificationId),
         }))
+        window.dispatchEvent(new Event("notifications:changed"))
       } catch (error) {
         toast.error((error as Error).message)
       }
@@ -116,9 +146,31 @@ const Layout = () => {
     .map((part) => part[0])
     .join("")
     .toUpperCase() || "AT"
+  const roleLabel = profile?.role === "super_admin"
+    ? "Super administrator"
+    : profile?.role === "admin"
+      ? "Administrator"
+      : profile?.role === "vendor"
+        ? "Vendor"
+        : "Customer"
+  const notificationTime = (createdAt: string) => {
+    const minutes = Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 60_000))
+    if (minutes < 1) return "Just now"
+    if (minutes < 60) return `${minutes}m ago`
+    if (minutes < 1_440) return `${Math.floor(minutes / 60)}h ago`
+    return new Date(createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+  }
+
+  const isFavorites = location.pathname === "/" && location.search.includes("favorites")
+  const mobileWorkspace = profile?.role === "vendor"
+    ? { to: "/vendor", label: "Studio", icon: <Store size={19} />, active: location.pathname === "/vendor" }
+    : profile?.role === "admin" || profile?.role === "super_admin"
+      ? { to: "/admin", label: "Admin", icon: <ShieldCheck size={19} />, active: location.pathname === "/admin" }
+      : { to: "/shop", label: "Shop", icon: <ShoppingBag size={19} />, active: location.pathname === "/shop" }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${isAuthenticated ? "has-mobile-nav" : ""}`}>
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       <Toaster
         position="top-right"
         toastOptions={{
@@ -132,24 +184,29 @@ const Layout = () => {
           <Brand />
           {isAuthenticated ? (
             <>
-              <nav className={`main-nav ${mobileOpen ? "is-open" : ""}`} aria-label="Main navigation">
-                <Link className={location.pathname === "/" ? "active" : ""} to="/">
+              <nav className="main-nav" aria-label="Main navigation">
+                <Link className={location.pathname === "/" && !isFavorites ? "active" : ""} to="/">
                   Designs
                 </Link>
                 <Link
-                  className={location.search.includes("favorites") ? "active" : ""}
+                  className={isFavorites ? "active" : ""}
                   to="/?view=favorites"
                 >
                   <Heart size={16} />
                   Favorites
                 </Link>
+                <Link className={location.pathname === "/shop" ? "active" : ""} to="/shop">
+                  <ShoppingBag size={16} /> Shop
+                </Link>
                 <Link className={location.pathname === "/orders" ? "active" : ""} to="/orders">
-                  <PackageCheck size={16} /> Orders
+                  <PackageCheck size={16} /> My orders
                 </Link>
                 {profile?.role === "vendor" && (
-                  <Link className={location.pathname === "/vendor" ? "active" : ""} to="/vendor">
-                    <Store size={16} /> Vendor workspace
-                  </Link>
+                  <>
+                    <Link className={location.pathname === "/vendor" ? "active" : ""} to="/vendor"><Store size={16} /> Designs</Link>
+                    <Link className={location.pathname === "/vendor/products" ? "active" : ""} to="/vendor/products"><ShoppingBag size={16} /> Products</Link>
+                    <Link className={location.pathname === "/vendor/sales-orders" ? "active" : ""} to="/vendor/sales-orders"><ClipboardList size={16} /> Sales orders</Link>
+                  </>
                 )}
                 {(profile?.role === "admin" || profile?.role === "super_admin") && (
                   <Link className={location.pathname === "/admin" ? "active" : ""} to="/admin">
@@ -174,7 +231,7 @@ const Layout = () => {
                   {notificationsOpen && (
                     <div className="notification-popover">
                       <div className="notification-heading">
-                        <div><strong>Notifications</strong><small>{notifications.unread_count} unread</small></div>
+                        <div><strong>New notifications</strong><small>{notifications.unread_count} unread</small></div>
                         {notifications.unread_count > 0 && (
                           <button onClick={markAllRead} type="button"><CheckCheck size={15} /> Mark all read</button>
                         )}
@@ -184,7 +241,7 @@ const Layout = () => {
                           <p className="notification-empty">You’re all caught up.</p>
                         ) : notifications.items.map((notification) => (
                           <button
-                            className={notification.read_at ? "" : "unread"}
+                            className="unread"
                             key={notification.id}
                             onClick={() => openNotification(notification.id, notification.link)}
                             type="button"
@@ -193,11 +250,21 @@ const Layout = () => {
                             <div>
                               <strong>{notification.title}</strong>
                               <p>{notification.message}</p>
-                              <small>{new Date(notification.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}</small>
+                              <small>{notificationTime(notification.created_at)}</small>
                             </div>
                           </button>
                         ))}
                       </div>
+                      <button
+                        className="notification-activity-link"
+                        onClick={() => {
+                          setNotificationsOpen(false)
+                          navigate("/profile?section=activity")
+                        }}
+                        type="button"
+                      >
+                        View activity log <ChevronRight size={15} />
+                      </button>
                     </div>
                   )}
                 </div>
@@ -213,7 +280,7 @@ const Layout = () => {
                     <span className="avatar">{initials}</span>
                     <span className="avatar-copy">
                       <strong>{profile?.full_name || "My account"}</strong>
-                      <small>{profile?.role || "View profile"}</small>
+                      <small>{profile ? roleLabel : "View profile"}</small>
                     </span>
                   </button>
                   {profileOpen && (
@@ -236,14 +303,6 @@ const Layout = () => {
                     </div>
                   )}
                 </div>
-                <button
-                  className="icon-button mobile-menu-button"
-                  onClick={() => setMobileOpen((open) => !open)}
-                  type="button"
-                  aria-label="Toggle navigation"
-                >
-                  {mobileOpen ? <X size={20} /> : <Menu size={20} />}
-                </button>
               </div>
             </>
           ) : (
@@ -256,9 +315,26 @@ const Layout = () => {
           )}
         </div>
       </header>
-      <main className="app-main">
+      <main className="app-main" id="main-content">
         <Outlet />
       </main>
+      {isAuthenticated && profile && (
+        <nav aria-label="Mobile navigation" className="mobile-bottom-nav">
+          <Link aria-current={location.pathname === "/" && !isFavorites ? "page" : undefined} className={location.pathname === "/" && !isFavorites ? "active" : ""} to="/">
+            <LayoutGrid size={19} /><span>Designs</span>
+          </Link>
+          <Link aria-current={location.pathname === "/orders" ? "page" : undefined} className={location.pathname === "/orders" ? "active" : ""} to="/orders">
+            <PackageCheck size={19} /><span>My orders</span>
+          </Link>
+          {profile.role === "vendor" && <Link aria-current={location.pathname === "/vendor/sales-orders" ? "page" : undefined} className={location.pathname === "/vendor/sales-orders" ? "active" : ""} to="/vendor/sales-orders"><ClipboardList size={19} /><span>Sales</span></Link>}
+          <Link aria-current={mobileWorkspace.active ? "page" : undefined} className={mobileWorkspace.active ? "active" : ""} to={mobileWorkspace.to}>
+            {mobileWorkspace.icon}<span>{mobileWorkspace.label}</span>
+          </Link>
+          <Link aria-current={location.pathname === "/profile" ? "page" : undefined} className={location.pathname === "/profile" ? "active" : ""} to="/profile">
+            <UserRound size={19} /><span>Profile</span>
+          </Link>
+        </nav>
+      )}
     </div>
   )
 }
