@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import type { FormEvent } from "react"
 import {
   BellRing,
@@ -347,6 +347,7 @@ const Profile = () => {
   const [addressDialog, setAddressDialog] = useState<DeliveryAddress | "new" | null>(null)
   const [savingProfile, setSavingProfile] = useState(false)
   const [loading, setLoading] = useState(true)
+  const profileContent = useRef<HTMLElement>(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -414,6 +415,9 @@ const Profile = () => {
   const selectSection = (nextSection: Section) => {
     setSection(nextSection)
     setSearchParams(nextSection === "details" ? {} : { section: nextSection }, { replace: true })
+    if (window.matchMedia("(max-width: 760px)").matches) {
+      window.requestAnimationFrame(() => profileContent.current?.scrollIntoView({ behavior: "smooth", block: "start" }))
+    }
   }
 
   const loadMoreActivity = async () => {
@@ -554,11 +558,11 @@ const Profile = () => {
     return <div className="loading-state page"><LoaderCircle className="spin" size={28} /><p>Loading your profile…</p></div>
   }
 
-  const navItems: Array<{ value: Section; label: string; detail: string; icon: typeof UserRound }> = [
-    { value: "details", label: "Personal details", detail: "Name, phone & location", icon: UserRound },
-    { value: "measurements", label: "Measurements", detail: `${measurements.length} saved profile${measurements.length === 1 ? "" : "s"}`, icon: Ruler },
-    { value: "addresses", label: "Delivery addresses", detail: `${addresses.length} saved address${addresses.length === 1 ? "" : "es"}`, icon: Home },
-    { value: "activity", label: "Activity log", detail: "Notifications & updates", icon: History },
+  const navItems: Array<{ value: Section; label: string; mobileLabel: string; detail: string; icon: typeof UserRound }> = [
+    { value: "details", label: "Personal details", mobileLabel: "Details", detail: "Name, phone & location", icon: UserRound },
+    { value: "measurements", label: "Measurements", mobileLabel: "Fits", detail: `${measurements.length} saved profile${measurements.length === 1 ? "" : "s"}`, icon: Ruler },
+    { value: "addresses", label: "Delivery addresses", mobileLabel: "Addresses", detail: `${addresses.length} saved address${addresses.length === 1 ? "" : "es"}`, icon: Home },
+    { value: "activity", label: "Activity log", mobileLabel: "Activity", detail: "Notifications & updates", icon: History },
   ]
 
   return (
@@ -568,10 +572,6 @@ const Profile = () => {
           <p className="eyebrow"><CircleUserRound size={15} /> Profile & settings</p>
           <h1>Your tailoring profile</h1>
           <p>Keep the contact, fit, and delivery information used for your made-to-measure orders in one place.</p>
-        </div>
-        <div className="profile-quick-stats" aria-label="Profile summary">
-          <span><strong>{measurements.length}</strong><small>Saved fits</small></span>
-          <span><strong>{addresses.length}</strong><small>Addresses</small></span>
         </div>
       </section>
       <div className="profile-layout">
@@ -586,7 +586,7 @@ const Profile = () => {
               return (
                 <button className={section === item.value ? "active" : ""} key={item.value} onClick={() => selectSection(item.value)} type="button">
                   <span className="side-icon"><Icon size={18} /></span>
-                  <span><strong>{item.label}</strong><small>{item.detail}</small></span>
+                  <span><strong><span className="profile-nav-desktop-label">{item.label}</span><span className="profile-nav-mobile-label">{item.mobileLabel}</span></strong><small>{item.detail}</small></span>
                   <ChevronRight size={16} />
                 </button>
               )
@@ -594,7 +594,7 @@ const Profile = () => {
           </nav>
         </aside>
 
-        <section className="profile-content">
+        <section className="profile-content" ref={profileContent}>
           {section === "details" && (
             <>
               <div className="section-heading">

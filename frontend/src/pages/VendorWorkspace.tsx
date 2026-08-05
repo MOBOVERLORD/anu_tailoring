@@ -7,15 +7,14 @@ import {
   Plus,
   Search,
   Send,
-  ShoppingBag,
   Sparkles,
   Trash2,
 } from "lucide-react"
 import toast from "react-hot-toast"
-import { Link } from "react-router-dom"
 import { ApiImage } from "@/components/ApiImage"
 import { Dialog } from "@/components/Dialog"
 import { ImageLightbox } from "@/components/ImageLightbox"
+import { VendorStudioNav } from "@/components/VendorStudioNav"
 import { AppSelect } from "@/components/ui/AppSelect"
 import { api } from "@/lib/api"
 import { boundedNumber } from "@/lib/formLimits"
@@ -225,13 +224,14 @@ const VendorWorkspace = () => {
 
   return (
     <div className="page workspace-page">
+      <VendorStudioNav />
       <section className="workspace-heading">
         <div>
           <p className="eyebrow"><Sparkles size={15} /> Vendor workspace</p>
           <h1>Manage your collection</h1>
           <p>Create a design, add 1–10 images, then send it to Anu Tailoring for approval.</p>
         </div>
-        <div className="workspace-heading-actions"><Link className="button button-secondary" to="/vendor/products"><ShoppingBag size={17} /> Products for sale</Link><button className="button button-primary" onClick={openCreate} type="button"><Plus size={18} /> New design</button></div>
+        <div className="workspace-heading-actions"><button className="button button-primary" onClick={openCreate} type="button"><Plus size={18} /> New design</button></div>
       </section>
 
       {summary && (

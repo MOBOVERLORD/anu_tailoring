@@ -163,7 +163,7 @@ const Layout = () => {
 
   const isFavorites = location.pathname === "/" && location.search.includes("favorites")
   const mobileWorkspace = profile?.role === "vendor"
-    ? { to: "/vendor", label: "Studio", icon: <Store size={19} />, active: location.pathname === "/vendor" }
+    ? { to: "/vendor", label: "Studio", icon: <Store size={19} />, active: location.pathname === "/vendor" || location.pathname === "/vendor/products" }
     : profile?.role === "admin" || profile?.role === "super_admin"
       ? { to: "/admin", label: "Admin", icon: <ShieldCheck size={19} />, active: location.pathname === "/admin" }
       : { to: "/shop", label: "Shop", icon: <ShoppingBag size={19} />, active: location.pathname === "/shop" }

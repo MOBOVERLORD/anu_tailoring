@@ -379,6 +379,24 @@ The presets follow Indian vocational tailoring material rather than one universa
 - Added an Activity log section under Profile & settings with read/unread state, timestamps, linked destinations, and progressive loading for older notifications.
 - Added a direct View activity log action to the notification popover and synchronized notification changes between the header and profile without waiting for the next poll.
 
+## Mobile studio and profile navigation
+
+- Added a shared Designs / Products switcher to both vendor studio screens so vendors can move between tailoring designs and sale inventory without returning through another menu.
+- Made the vendor switcher sticky on mobile and kept the bottom Studio destination active for both studio sections.
+- Reworked the mobile profile menu into a compact four-tab sticky selector that remains visible while scrolling long profile sections.
+- Profile section changes now return the selected content heading into view, and the previously compressed Activity log heading uses a proper stacked mobile layout.
+- Tightened the mobile profile hero spacing while retaining the summary and full desktop presentation.
+
+## Mobile catalogue density and responsive audit
+
+- Replaced the smallest-screen single-column design and shop layouts with compact two-column commerce grids, following Amazon Store's documented two-products-per-mobile-row pattern.
+- Standardized mobile catalogue cards around 4:5 imagery, concise two-line titles, visible pricing and stock, smaller badges, compact gallery controls, and reduced secondary copy.
+- Reduced mobile page, hero, toolbar, empty-state, summary, vendor workspace, inventory, order, account, and profile-card spacing while keeping primary touch actions usable.
+- Converted customer order views into a horizontally scrollable status rail and tightened expanded/collapsed order presentation.
+- Changed Profile & settings navigation from a fixed four-column grid to a sticky horizontal rail with scroll snapping, allowing future settings sections without wrapping or unreadably narrow labels.
+- Verified the dense catalogue and a six-option profile rail at a 440 x 956 mobile viewport in dark theme.
+- Removed the redundant saved-fit and address counter cards from the Profile hero; section counts remain available in the Profile navigation.
+
 ## Validation
 
 - `npm run build` — passing.
