@@ -2,18 +2,25 @@
 
 import asyncio
 from decimal import Decimal
+from types import SimpleNamespace
 
 import httpx
 
 from sqlalchemy import select
 
 from app.database import AsyncSessionLocal, engine
+from app.addresses import _apply_verified_location, _create_location_token
 from app.deliveries import calculate_delivery_cost
 from app.main import app, init_db_and_seed_admin
 from app import maps
 from app.config import settings as app_settings
-from app.models import DeliverySettings
-from app.schemas import DeliverySettingsUpdate, DeliveryTrackingUpdate, VendorInvoiceUpsert
+from app.models import DeliveryAddress, DeliverySettings
+from app.schemas import (
+    BrowserLocationRequest,
+    DeliverySettingsUpdate,
+    DeliveryTrackingUpdate,
+    VendorInvoiceUpsert,
+)
 
 
 async def main() -> None:
@@ -21,6 +28,39 @@ async def main() -> None:
     assert calculate_delivery_cost(100, 2.5) == 2.5
     assert calculate_delivery_cost(101, 2.5) == 5.0
     assert calculate_delivery_cost(1_001, 0.75) == 8.25
+
+    browser_location = BrowserLocationRequest(
+        latitude=17.520818,
+        longitude=78.381094,
+        accuracy_meters=50,
+    )
+    resolved = SimpleNamespace(
+        place_id="osm:way:281250533",
+        formatted_address="Road No 1, Nizampet, Telangana, 500090, India",
+        postal_code="500090",
+    )
+    location_token = _create_location_token(42, browser_location, resolved)
+    address = DeliveryAddress(
+        user_id=42,
+        recipient_name="Receiver",
+        phone_number="9999999999",
+        street_address="Floor 2, Road No 1",
+        city="Nizampet",
+        state="Telangana",
+        postal_code="500090",
+        country="India",
+        is_default=False,
+    )
+    _apply_verified_location(
+        address,
+        location_token,
+        42,
+        browser_location.latitude,
+        browser_location.longitude,
+    )
+    assert address.latitude == browser_location.latitude
+    assert address.longitude == browser_location.longitude
+    assert address.google_place_id == resolved.place_id
 
     settings = DeliverySettingsUpdate(
         price_per_100m=Decimal("2.50"),

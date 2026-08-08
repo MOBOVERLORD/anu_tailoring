@@ -5,6 +5,8 @@ export interface UserProfile {
   phone: string | null
   location: string | null
   vendor_pickup_address: string | null
+  vendor_pickup_latitude: number | null
+  vendor_pickup_longitude: number | null
   role: "customer" | "vendor" | "admin" | "super_admin"
   is_active: boolean
   created_at: string
@@ -150,9 +152,31 @@ export interface DeliveryAddress {
   postal_code: string
   country: string
   is_default: boolean
+  latitude: number | null
+  longitude: number | null
+  google_place_id: string | null
 }
 
-export type DeliveryAddressInput = Omit<DeliveryAddress, "id" | "user_id">
+export type DeliveryAddressInput = Omit<DeliveryAddress, "id" | "user_id" | "google_place_id" | "latitude" | "longitude"> & {
+  latitude?: number | null
+  longitude?: number | null
+  location_token?: string | null
+}
+
+export interface ResolvedLocation {
+  latitude: number
+  longitude: number
+  accuracy_meters: number | null
+  formatted_address: string
+  place_id: string
+  provider_name: string
+  street_address: string | null
+  city: string | null
+  state: string | null
+  postal_code: string | null
+  country: string | null
+  location_token: string
+}
 
 export type OrderStatus = "pending" | "confirmed" | "fabric_cutting" | "stitching" | "quality_check" | "shipped" | "delivered" | "cancelled"
 

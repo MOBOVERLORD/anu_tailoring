@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
+import re
 from typing import Iterable, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,6 +18,7 @@ from app.maps import (
     configured_maps_provider,
     compute_driving_route,
     geocode_address,
+    reverse_geocode_location,
     location_reference_matches_provider,
     maps_configuration_message,
     maps_configured,
@@ -104,6 +106,20 @@ async def geocode_customer_address(address: DeliveryAddress) -> None:
     address.geocoded_at = datetime.now(timezone.utc)
 
 
+async def geocode_customer_coordinates(
+    address: DeliveryAddress, latitude: float, longitude: float
+) -> None:
+    result = await reverse_geocode_location(latitude, longitude)
+    if address.postal_code and address.postal_code not in result.formatted_address:
+        raise MapProviderError(
+            "The captured location does not match this PIN code; move to the delivery address and try again"
+        )
+    address.google_place_id = result.place_id
+    address.latitude = latitude
+    address.longitude = longitude
+    address.geocoded_at = datetime.now(timezone.utc)
+
+
 async def geocode_vendor_pickup(vendor: User, pickup_address: str) -> None:
     normalized = " ".join(pickup_address.split())
     if len(normalized) < 10:
@@ -113,6 +129,25 @@ async def geocode_vendor_pickup(vendor: User, pickup_address: str) -> None:
     vendor.vendor_pickup_place_id = result.place_id
     vendor.vendor_pickup_latitude = result.latitude
     vendor.vendor_pickup_longitude = result.longitude
+    vendor.vendor_pickup_geocoded_at = datetime.now(timezone.utc)
+
+
+async def geocode_vendor_pickup_coordinates(
+    vendor: User, pickup_address: str, latitude: float, longitude: float
+) -> None:
+    normalized = " ".join(pickup_address.split())
+    if len(normalized) < 10:
+        raise MapProviderError("Enter the vendor's complete pickup address")
+    result = await reverse_geocode_location(latitude, longitude)
+    postal_codes = re.findall(r"\b\d{6}\b", normalized)
+    if postal_codes and not any(code in result.formatted_address for code in postal_codes):
+        raise MapProviderError(
+            "The captured location does not match the pickup address PIN code"
+        )
+    vendor.vendor_pickup_address = normalized
+    vendor.vendor_pickup_place_id = result.place_id
+    vendor.vendor_pickup_latitude = latitude
+    vendor.vendor_pickup_longitude = longitude
     vendor.vendor_pickup_geocoded_at = datetime.now(timezone.utc)
 
 

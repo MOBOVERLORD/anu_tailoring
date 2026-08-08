@@ -71,6 +71,8 @@ class UserResponse(BaseModel):
     phone: Optional[str] = None
     location: Optional[str] = None
     vendor_pickup_address: Optional[str] = None
+    vendor_pickup_latitude: Optional[float] = None
+    vendor_pickup_longitude: Optional[float] = None
     role: str
     is_active: bool
     created_at: datetime
@@ -129,15 +131,42 @@ class UserUpdate(BaseModel):
 
 class AdminUserUpdate(UserUpdate):
     vendor_pickup_address: Optional[str] = Field(default=None, max_length=500)
+    vendor_pickup_latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    vendor_pickup_longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+    role: Optional[str] = None
+
+    @field_validator("role")
+    @classmethod
+    def manageable_role(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        normalized = v.strip().lower()
+        if normalized not in {"customer", "vendor", "admin"}:
+            raise ValueError("Role must be customer, vendor, or admin")
+        return normalized
+
+    @model_validator(mode="after")
+    def pickup_coordinates_are_a_pair(self):
+        if (self.vendor_pickup_latitude is None) != (self.vendor_pickup_longitude is None):
+            raise ValueError("Pickup latitude and longitude must be provided together")
+        return self
 
 
 class VendorCreate(UserCreate):
     pickup_address: str = Field(min_length=10, max_length=500)
+    pickup_latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    pickup_longitude: Optional[float] = Field(default=None, ge=-180, le=180)
 
     @field_validator("pickup_address")
     @classmethod
     def normalize_pickup_address(cls, v: str) -> str:
         return " ".join(v.split())
+
+    @model_validator(mode="after")
+    def pickup_coordinates_are_a_pair(self):
+        if (self.pickup_latitude is None) != (self.pickup_longitude is None):
+            raise ValueError("Pickup latitude and longitude must be provided together")
+        return self
 
 
 class UserStatusUpdate(BaseModel):
@@ -471,6 +500,9 @@ class DeliveryAddressCreate(BaseModel):
     postal_code: str = Field(pattern=r"^\d{6}$")
     country: Optional[str] = Field(default="India", max_length=100)
     is_default: Optional[bool] = False
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+    location_token: Optional[str] = Field(default=None, min_length=20, max_length=4000)
 
     @field_validator("phone_number")
     @classmethod
@@ -482,6 +514,12 @@ class DeliveryAddressCreate(BaseModel):
     def normalize_address_text(cls, v: str) -> str:
         return " ".join(v.split())
 
+    @model_validator(mode="after")
+    def coordinates_are_a_pair(self):
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("Latitude and longitude must be provided together")
+        return self
+
 
 class DeliveryAddressUpdate(BaseModel):
     recipient_name: Optional[str] = Field(default=None, min_length=2, max_length=100)
@@ -492,6 +530,9 @@ class DeliveryAddressUpdate(BaseModel):
     postal_code: Optional[str] = Field(default=None, pattern=r"^\d{6}$")
     country: Optional[str] = Field(default=None, max_length=100)
     is_default: Optional[bool] = None
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+    location_token: Optional[str] = Field(default=None, min_length=20, max_length=4000)
 
     @field_validator("phone_number")
     @classmethod
@@ -503,13 +544,38 @@ class DeliveryAddressUpdate(BaseModel):
     def normalize_updated_address_text(cls, v: Optional[str]) -> Optional[str]:
         return " ".join(v.split()) if v else None
 
+    @model_validator(mode="after")
+    def coordinates_are_a_pair(self):
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("Latitude and longitude must be provided together")
+        return self
+
 
 class DeliveryAddressResponse(DeliveryAddressCreate):
     id: int
     user_id: int
+    google_place_id: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class BrowserLocationRequest(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    accuracy_meters: Optional[float] = Field(default=None, ge=0, le=100_000)
+
+
+class ResolvedLocationResponse(BrowserLocationRequest):
+    formatted_address: str
+    place_id: str
+    provider_name: str
+    street_address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    postal_code: Optional[str] = None
+    country: Optional[str] = None
+    location_token: str
 
 
 # --- Order Schemas ---

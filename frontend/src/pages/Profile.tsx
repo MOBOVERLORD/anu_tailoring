@@ -19,6 +19,7 @@ import {
 import toast from "react-hot-toast"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { Dialog } from "@/components/Dialog"
+import { LocationCapture } from "@/components/LocationCapture"
 import { AppSelect } from "@/components/ui/AppSelect"
 import { api, getCurrentUser, updateCurrentUserCache } from "@/lib/api"
 import { validMeasurementInput } from "@/lib/formLimits"
@@ -265,21 +266,41 @@ function MeasurementForm({
 }
 
 function AddressForm({
+  accountDetails,
   initial,
   onCancel,
   onSave,
 }: {
-  initial?: DeliveryAddress
+  accountDetails: { full_name: string; phone: string }
+  initial?: DeliveryAddressInput
   onCancel: () => void
   onSave: (value: DeliveryAddressInput) => Promise<void>
 }) {
   const [form, setForm] = useState<DeliveryAddressInput>(initial || emptyAddress)
   const [saving, setSaving] = useState(false)
+  const [differentReceiver, setDifferentReceiver] = useState(
+    Boolean(initial && (
+      initial.recipient_name !== accountDetails.full_name
+      || initial.phone_number !== accountDetails.phone
+    )),
+  )
+  const recipientInput = useRef<HTMLInputElement>(null)
+  const hasVerifiedLocation = Boolean(
+    form.latitude != null
+    && form.longitude != null
+    && form.city
+    && form.state
+    && /^\d{6}$/.test(form.postal_code),
+  )
   const set = <K extends keyof DeliveryAddressInput>(key: K, value: DeliveryAddressInput[K]) => {
     setForm((current) => ({ ...current, [key]: value }))
   }
   const submit = async (event: FormEvent) => {
     event.preventDefault()
+    if (!hasVerifiedLocation) {
+      toast.error("Use Locate me or choose the delivery point on the map first")
+      return
+    }
     setSaving(true)
     try {
       await onSave(form)
@@ -287,13 +308,53 @@ function AddressForm({
       setSaving(false)
     }
   }
+  const addReceiver = () => {
+    setDifferentReceiver(true)
+    setForm((current) => ({ ...current, recipient_name: "", phone_number: "" }))
+    window.requestAnimationFrame(() => recipientInput.current?.focus())
+  }
+  const restoreMyDetails = () => {
+    setDifferentReceiver(false)
+    setForm((current) => ({
+      ...current,
+      recipient_name: accountDetails.full_name,
+      phone_number: accountDetails.phone,
+    }))
+  }
 
   return (
     <form className="dialog-form" onSubmit={submit}>
+      <LocationCapture
+        current={form.latitude != null && form.longitude != null ? {
+          latitude: form.latitude,
+          longitude: form.longitude,
+        } : null}
+        onResolved={(location) => setForm((current) => ({
+          ...current,
+          street_address: location.street_address || location.formatted_address,
+          city: location.city || current.city,
+          state: location.state || current.state,
+          postal_code: location.postal_code?.match(/^\d{6}$/) ? location.postal_code : current.postal_code,
+          country: location.country || "India",
+          latitude: location.latitude,
+          longitude: location.longitude,
+          location_token: location.location_token,
+        }))}
+      />
+      <div className="receiver-selector">
+        <div>
+          <strong>Who is receiving?</strong>
+          <p>{differentReceiver ? "Enter the receiver's contact details below." : "Your account details are selected."}</p>
+        </div>
+        <div aria-label="Choose delivery recipient" className="receiver-toggle" role="group">
+          <button aria-pressed={!differentReceiver} className={!differentReceiver ? "is-selected" : ""} onClick={() => { if (differentReceiver) restoreMyDetails() }} type="button">Myself</button>
+          <button aria-pressed={differentReceiver} className={differentReceiver ? "is-selected" : ""} onClick={() => { if (!differentReceiver) addReceiver() }} type="button">Someone else</button>
+        </div>
+      </div>
       <div className="form-grid">
         <div className="field">
           <label htmlFor="recipient">Recipient name</label>
-          <input autoFocus id="recipient" maxLength={100} onChange={(e) => set("recipient_name", e.target.value)} required value={form.recipient_name} />
+          <input id="recipient" maxLength={100} onChange={(e) => set("recipient_name", e.target.value)} ref={recipientInput} required value={form.recipient_name} />
         </div>
         <div className="field">
           <label htmlFor="address-phone">Phone number</label>
@@ -301,30 +362,18 @@ function AddressForm({
         </div>
       </div>
       <div className="field">
-        <label htmlFor="street">House, building, street and area</label>
+        <label htmlFor="street">House, flat, building and delivery details</label>
         <textarea id="street" maxLength={500} onChange={(e) => set("street_address", e.target.value)} required rows={2} value={form.street_address} />
+        <small>Add a floor, flat number, landmark or instructions that the map cannot provide.</small>
       </div>
-      <div className="form-grid three">
-        <div className="field">
-          <label htmlFor="city">City</label>
-          <input id="city" maxLength={100} onChange={(e) => set("city", e.target.value)} required value={form.city} />
-        </div>
-        <div className="field">
-          <label htmlFor="state">State</label>
-          <input id="state" maxLength={100} onChange={(e) => set("state", e.target.value)} required value={form.state} />
-        </div>
-        <div className="field">
-          <label htmlFor="pin">PIN code</label>
-          <input id="pin" inputMode="numeric" maxLength={6} onChange={(e) => { if (/^\d{0,6}$/.test(e.target.value)) set("postal_code", e.target.value) }} pattern="[0-9]{6}" required value={form.postal_code} />
-        </div>
-      </div>
+      {!hasVerifiedLocation && <div className="location-required-note"><MapPin size={16} /><span>Select a location above to add the city, state and PIN automatically.</span></div>}
       <label className="checkbox-field">
         <input checked={form.is_default} onChange={(e) => set("is_default", e.target.checked)} type="checkbox" />
         <span><strong>Use as default address</strong><small>We’ll select this first during checkout.</small></span>
       </label>
       <div className="dialog-actions">
         <button className="button button-secondary" onClick={onCancel} type="button">Cancel</button>
-        <button className="button button-primary" disabled={saving} type="submit">
+        <button className="button button-primary" disabled={saving || !hasVerifiedLocation} type="submit">
           <Save size={17} /> {saving ? "Saving…" : "Save address"}
         </button>
       </div>
@@ -699,6 +748,16 @@ const Profile = () => {
                         </div>
                       </div>
                       <address>{item.street_address}<br />{item.city}, {item.state} {item.postal_code}<br />{item.country}</address>
+                      {item.latitude != null && item.longitude != null && (
+                        <a
+                          className="saved-location-link"
+                          href={`https://www.openstreetmap.org/?mlat=${item.latitude}&mlon=${item.longitude}#map=18/${item.latitude}/${item.longitude}`}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          <MapPin size={14} /> Precise location saved · View map
+                        </a>
+                      )}
                     </article>
                   ))}
                 </div>
@@ -782,7 +841,12 @@ const Profile = () => {
           title={addressDialog === "new" ? "Add delivery address" : "Edit delivery address"}
         >
           <AddressForm
-            initial={addressDialog === "new" ? undefined : addressDialog}
+            accountDetails={{ full_name: profile?.full_name || "", phone: profile?.phone || "" }}
+            initial={addressDialog === "new" ? (profile ? {
+              ...emptyAddress,
+              recipient_name: profile.full_name,
+              phone_number: profile.phone || "",
+            } : undefined) : addressDialog}
             onCancel={() => setAddressDialog(null)}
             onSave={saveAddress}
           />

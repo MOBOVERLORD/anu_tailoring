@@ -1858,6 +1858,300 @@ h3 {
   line-height: 1.65;
 }
 
+.saved-location-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 750;
+  text-decoration: none;
+}
+
+.saved-location-link:hover {
+  text-decoration: underline;
+}
+
+.location-capture {
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--brand) 25%, var(--border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--brand) 5%, var(--surface-soft));
+}
+
+.location-capture-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+}
+
+.location-capture-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--brand) 14%, transparent);
+  color: var(--brand);
+}
+
+.location-capture-head strong,
+.captured-location strong {
+  display: block;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.location-capture-head p {
+  margin: 3px 0 0;
+  color: var(--text-soft);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.location-button {
+  min-height: 38px;
+  padding-inline: 13px;
+  white-space: nowrap;
+}
+
+.location-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.location-button.is-active {
+  border-color: color-mix(in srgb, var(--brand) 46%, var(--border));
+  background: color-mix(in srgb, var(--brand) 12%, var(--surface));
+  color: var(--brand);
+}
+
+.location-map-picker {
+  margin-top: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+}
+
+.location-map-loading {
+  display: flex;
+  min-height: 180px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface-soft);
+  color: var(--text-soft);
+  font-size: 11px;
+}
+
+.location-map-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 13px;
+}
+
+.location-map-heading strong,
+.location-map-heading p {
+  display: block;
+  margin: 0;
+}
+
+.location-map-heading strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.location-map-heading p {
+  margin-top: 3px;
+  color: var(--text-soft);
+  font-size: 9px;
+}
+
+.location-map-heading > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--brand);
+  font-size: 9px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.location-map {
+  z-index: 0;
+  width: 100%;
+  height: 310px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-soft);
+}
+
+.location-map .leaflet-control-attribution {
+  font-family: var(--font-sans);
+  font-size: 8px;
+}
+
+.location-required-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed color-mix(in srgb, var(--brand) 38%, var(--border));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--brand) 5%, var(--surface));
+  color: var(--text-soft);
+  font-size: 10px;
+}
+
+.location-required-note svg {
+  flex: 0 0 auto;
+  color: var(--brand);
+}
+
+.captured-location {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 11px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--success) 8%, var(--surface));
+  color: var(--success);
+}
+
+.captured-location small {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-soft);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.captured-location a {
+  color: var(--brand);
+}
+
+.location-privacy {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 0;
+  color: var(--text-soft);
+  font-size: 9px;
+}
+
+.location-capture.compact .location-capture-head {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.location-capture.compact .location-button {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.location-capture.compact .location-actions {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: 1fr 1fr;
+  width: 100%;
+}
+
+.receiver-selector {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 2px 0;
+}
+
+.receiver-selector strong {
+  display: block;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.receiver-selector p {
+  margin: 3px 0 0;
+  color: var(--text-soft);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.receiver-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface-soft);
+}
+
+.receiver-toggle button {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.receiver-toggle button:hover {
+  color: var(--text);
+}
+
+.receiver-toggle button.is-selected {
+  background: var(--brand);
+  color: var(--brand-ink);
+  box-shadow: var(--shadow-sm);
+}
+
+@media (max-width: 560px) {
+  .location-capture-head {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .location-button {
+    width: 100%;
+  }
+
+  .location-actions {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .location-map {
+    height: 280px;
+  }
+
+  .receiver-selector {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 9px;
+  }
+
+  .receiver-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+}
+
 .default-badge {
   display: inline-flex;
   align-items: center;
@@ -3183,6 +3477,17 @@ h3 {
   text-transform: uppercase;
 }
 
+.account-role {
+  padding: 3px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-soft);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: capitalize;
+}
+
 .account-status.active {
   background: color-mix(in srgb, var(--success) 13%, var(--surface));
   color: var(--success);
@@ -3202,6 +3507,41 @@ h3 {
 .account-actions .icon-button {
   width: 34px;
   height: 34px;
+}
+
+.role-management-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, .65fr);
+  align-items: end;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--brand) 28%, var(--border));
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--brand) 6%, var(--surface-soft));
+}
+
+.role-management-field label,
+.role-management-field small {
+  display: block;
+}
+
+.role-management-field label {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.role-management-field small {
+  margin-top: 4px;
+  color: var(--text-soft);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+@media (max-width: 560px) {
+  .role-management-field {
+    grid-template-columns: 1fr;
+  }
 }
 
 .icon-button.danger {

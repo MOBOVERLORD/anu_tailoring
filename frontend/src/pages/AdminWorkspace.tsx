@@ -13,6 +13,7 @@ import {
   Truck,
   Trash2,
   UserCheck,
+  UserCog,
   UserPlus,
   Users,
   UserX,
@@ -23,23 +24,52 @@ import { ApiImage } from "@/components/ApiImage"
 import { Dialog } from "@/components/Dialog"
 import { DeliveryManagement } from "@/components/DeliveryManagement"
 import { ImageLightbox } from "@/components/ImageLightbox"
+import { LocationCapture } from "@/components/LocationCapture"
 import MeasurementCategoriesAdmin from "@/components/MeasurementCategoriesAdmin"
 import { ProductApprovals } from "@/components/ProductApprovals"
 import { AppSelect } from "@/components/ui/AppSelect"
 import { api, getCurrentUser } from "@/lib/api"
 import type { Design, DesignImage, UserProfile } from "@/types/api"
 
-type AdminSection = "reviews" | "products" | "vendors" | "customers" | "measurements" | "delivery"
+type AdminSection = "reviews" | "products" | "vendors" | "customers" | "staff" | "measurements" | "delivery"
 type AccountFilter = "all" | "active" | "inactive"
+type ManageableRole = "customer" | "vendor" | "admin"
 const ADMIN_CATEGORY_OPTIONS = [{ value: "all", label: "All categories" }, { value: "women", label: "Women" }, { value: "men", label: "Men" }, { value: "unisex", label: "Unisex" }, { value: "kids", label: "Kids" }]
 const ACCOUNT_STATUS_OPTIONS = [{ value: "all", label: "All statuses" }, { value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]
+const MANAGEABLE_ROLE_OPTIONS = [
+  { value: "customer", label: "Customer" },
+  { value: "vendor", label: "Vendor" },
+  { value: "admin", label: "Administrator" },
+]
 
-const emptyVendorForm = {
+interface VendorFormState {
+  full_name: string
+  email: string
+  phone: string
+  password: string
+  pickup_address: string
+  pickup_latitude: number | null
+  pickup_longitude: number | null
+}
+
+interface ManagedUserFormState {
+  full_name: string
+  phone: string
+  location: string
+  vendor_pickup_address: string
+  vendor_pickup_latitude: number | null
+  vendor_pickup_longitude: number | null
+  role: ManageableRole
+}
+
+const emptyVendorForm: VendorFormState = {
   full_name: "",
   email: "",
   phone: "",
   password: "",
   pickup_address: "",
+  pickup_latitude: null,
+  pickup_longitude: null,
 }
 
 const AdminWorkspace = () => {
@@ -47,6 +77,7 @@ const AdminWorkspace = () => {
   const [designs, setDesigns] = useState<Design[]>([])
   const [vendors, setVendors] = useState<UserProfile[]>([])
   const [customers, setCustomers] = useState<UserProfile[]>([])
+  const [staff, setStaff] = useState<UserProfile[]>([])
   const [section, setSection] = useState<AdminSection>("reviews")
   const [reviewSearch, setReviewSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("all")
@@ -58,23 +89,33 @@ const AdminWorkspace = () => {
   const [vendorForm, setVendorForm] = useState(emptyVendorForm)
   const [creatingVendor, setCreatingVendor] = useState(false)
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null)
-  const [userForm, setUserForm] = useState({ full_name: "", phone: "", location: "", vendor_pickup_address: "" })
+  const [userForm, setUserForm] = useState<ManagedUserFormState>({
+    full_name: "",
+    phone: "",
+    location: "",
+    vendor_pickup_address: "",
+    vendor_pickup_latitude: null,
+    vendor_pickup_longitude: null,
+    role: "customer",
+  })
   const [lightbox, setLightbox] = useState<{ images: DesignImage[]; index: number } | null>(null)
 
   const isSuperAdmin = profile?.role === "super_admin"
 
   const loadAdmin = useCallback(async () => {
     try {
-      const [me, queue, vendorUsers, customerUsers] = await Promise.all([
+      const [me, queue, vendorUsers, customerUsers, staffUsers] = await Promise.all([
         getCurrentUser(),
         api<Design[]>("/api/admin/designs?status=submitted"),
         api<UserProfile[]>("/api/admin/users?role=vendor"),
         api<UserProfile[]>("/api/admin/users?role=customer"),
+        api<UserProfile[]>("/api/admin/users?role=admin"),
       ])
       setProfile(me)
       setDesigns(queue)
       setVendors(vendorUsers)
       setCustomers(customerUsers)
+      setStaff(staffUsers)
     } catch (error) {
       toast.error((error as Error).message)
     } finally {
@@ -105,7 +146,7 @@ const AdminWorkspace = () => {
     })
   }, [categoryFilter, designs, reviewSearch])
 
-  const directoryUsers = section === "vendors" ? vendors : customers
+  const directoryUsers = section === "vendors" ? vendors : section === "staff" ? staff : customers
   const filteredUsers = useMemo(() => {
     const search = accountSearch.trim().toLowerCase()
     return directoryUsers.filter((user) => {
@@ -118,9 +159,10 @@ const AdminWorkspace = () => {
   }, [accountFilter, accountSearch, directoryUsers])
 
   const replaceUser = (updated: UserProfile) => {
-    const update = (items: UserProfile[]) => items.map((item) => item.id === updated.id ? updated : item)
-    if (updated.role === "vendor") setVendors(update)
-    if (updated.role === "customer") setCustomers(update)
+    const remove = (items: UserProfile[]) => items.filter((item) => item.id !== updated.id)
+    setVendors((current) => updated.role === "vendor" ? [updated, ...remove(current)] : remove(current))
+    setCustomers((current) => updated.role === "customer" ? [updated, ...remove(current)] : remove(current))
+    setStaff((current) => updated.role === "admin" ? [updated, ...remove(current)] : remove(current))
   }
 
   const review = async (design: Design, decision: "approved" | "rejected") => {
@@ -169,12 +211,18 @@ const AdminWorkspace = () => {
       phone: user.phone || "",
       location: user.location || "",
       vendor_pickup_address: user.vendor_pickup_address || "",
+      vendor_pickup_latitude: user.vendor_pickup_latitude,
+      vendor_pickup_longitude: user.vendor_pickup_longitude,
+      role: user.role as ManageableRole,
     })
   }
 
   const saveUser = async (event: React.FormEvent) => {
     event.preventDefault()
     if (!editingUser) return
+    if (userForm.role !== editingUser.role && !window.confirm(
+      `Change ${editingUser.full_name}'s role from ${editingUser.role.replace("_", " ")} to ${userForm.role.replace("_", " ")}? Their available workspace and permissions will change immediately.`,
+    )) return
     setBusyId(editingUser.id)
     try {
       const updated = await api<UserProfile>(`/api/admin/users/${editingUser.id}`, {
@@ -213,8 +261,9 @@ const AdminWorkspace = () => {
     setBusyId(user.id)
     try {
       await api(`/api/admin/users/${user.id}`, { method: "DELETE" })
-      if (user.role === "vendor") setVendors((current) => current.filter((item) => item.id !== user.id))
-      if (user.role === "customer") setCustomers((current) => current.filter((item) => item.id !== user.id))
+      setVendors((current) => current.filter((item) => item.id !== user.id))
+      setCustomers((current) => current.filter((item) => item.id !== user.id))
+      setStaff((current) => current.filter((item) => item.id !== user.id))
       toast.success("Account deleted")
     } catch (error) {
       toast.error((error as Error).message)
@@ -256,6 +305,9 @@ const AdminWorkspace = () => {
         <button className={section === "customers" ? "active" : ""} onClick={() => setSection("customers")} type="button">
           <Users size={17} /> Customers <span>{customers.length}</span>
         </button>
+        {isSuperAdmin && <button className={section === "staff" ? "active" : ""} onClick={() => setSection("staff")} type="button">
+          <UserCog size={17} /> Staff <span>{staff.length}</span>
+        </button>}
         <button className={section === "measurements" ? "active" : ""} onClick={() => setSection("measurements")} type="button">
           <Ruler size={17} /> Measurements
         </button>
@@ -317,7 +369,7 @@ const AdminWorkspace = () => {
       ) : (
         <section className="admin-panel">
           <div className="admin-panel-heading">
-            <div><p className="eyebrow">Account directory</p><h2>{section === "vendors" ? "Vendor accounts" : "Customer accounts"}</h2></div>
+            <div><p className="eyebrow">Account directory</p><h2>{section === "vendors" ? "Vendor accounts" : section === "staff" ? "Administrator accounts" : "Customer accounts"}</h2></div>
             <div className="admin-filters">
               <label className="search-field"><Search size={17} /><input aria-label="Search accounts" onChange={(event) => setAccountSearch(event.target.value)} placeholder="Name, email, phone…" value={accountSearch} /></label>
               <AppSelect ariaLabel="Filter by account status" className="toolbar-select" onValueChange={(value) => setAccountFilter(value as AccountFilter)} options={ACCOUNT_STATUS_OPTIONS} value={accountFilter} />
@@ -334,7 +386,17 @@ const AdminWorkspace = () => {
                   <div className="field"><label htmlFor="vendor-name">Vendor name</label><input id="vendor-name" maxLength={100} minLength={2} required value={vendorForm.full_name} onChange={(event) => setVendorForm({ ...vendorForm, full_name: event.target.value })} /></div>
                   <div className="field"><label htmlFor="vendor-email">Email</label><input autoComplete="off" id="vendor-email" maxLength={254} required type="email" value={vendorForm.email} onChange={(event) => setVendorForm({ ...vendorForm, email: event.target.value })} /></div>
                   <div className="field"><label htmlFor="vendor-phone">Phone</label><input id="vendor-phone" maxLength={20} required type="tel" value={vendorForm.phone} onChange={(event) => setVendorForm({ ...vendorForm, phone: event.target.value })} /></div>
-                  <div className="field"><label htmlFor="vendor-pickup">Verified pickup address</label><textarea id="vendor-pickup" maxLength={500} minLength={10} onChange={(event) => setVendorForm({ ...vendorForm, pickup_address: event.target.value })} placeholder="Shop number, street, area, city, state and PIN code" required rows={3} value={vendorForm.pickup_address} /><small>The configured map service verifies this location and uses it as the delivery route origin.</small></div>
+                  <div className="field"><label htmlFor="vendor-pickup">Verified pickup address</label><textarea id="vendor-pickup" maxLength={500} minLength={10} onChange={(event) => setVendorForm({ ...vendorForm, pickup_address: event.target.value, pickup_latitude: null, pickup_longitude: null })} placeholder="Shop number, street, area, city, state and PIN code" required rows={3} value={vendorForm.pickup_address} /><small>Enter the postal address, then capture the precise shop location while you are there.</small></div>
+                  <LocationCapture
+                    compact
+                    current={vendorForm.pickup_latitude != null && vendorForm.pickup_longitude != null ? { latitude: vendorForm.pickup_latitude, longitude: vendorForm.pickup_longitude } : null}
+                    onResolved={(location) => setVendorForm((current) => ({
+                      ...current,
+                      pickup_address: location.formatted_address,
+                      pickup_latitude: location.latitude,
+                      pickup_longitude: location.longitude,
+                    }))}
+                  />
                   <div className="field"><label htmlFor="vendor-password">Temporary password</label><input autoComplete="new-password" id="vendor-password" maxLength={128} minLength={8} required type="password" value={vendorForm.password} onChange={(event) => setVendorForm({ ...vendorForm, password: event.target.value })} /><small>At least 8 characters with a letter and number.</small></div>
                   <button className="button button-primary button-wide" disabled={creatingVendor} type="submit"><UserPlus size={17} /> {creatingVendor ? "Creating…" : "Create vendor"}</button>
                 </form>
@@ -347,12 +409,12 @@ const AdminWorkspace = () => {
               ) : filteredUsers.map((user) => (
                 <article className={`account-card ${user.is_active ? "" : "inactive"}`} key={user.id}>
                   <span className="avatar">{user.full_name.split(" ").map((part) => part[0]).join("").slice(0, 2)}</span>
-                  <div className="account-card-copy"><div><strong>{user.full_name}</strong><span className={`account-status ${user.is_active ? "active" : "inactive"}`}>{user.is_active ? "Active" : "Inactive"}</span></div><p>{user.email}</p><small>{user.phone || "No phone"}{user.location ? ` · ${user.location}` : ""}</small></div>
+                  <div className="account-card-copy"><div><strong>{user.full_name}</strong><span className="account-role">{user.role.replace("_", " ")}</span><span className={`account-status ${user.is_active ? "active" : "inactive"}`}>{user.is_active ? "Active" : "Inactive"}</span></div><p>{user.email}</p><small>{user.phone || "No phone"}{user.location ? ` · ${user.location}` : ""}</small></div>
                   {isSuperAdmin && (
                     <div className="account-actions">
                       <button aria-label={`Edit ${user.full_name}`} className="icon-button" disabled={busyId === user.id} onClick={() => openEditUser(user)} type="button"><Edit3 size={16} /></button>
                       <button aria-label={`${user.is_active ? "Deactivate" : "Activate"} ${user.full_name}`} className="icon-button" disabled={busyId === user.id} onClick={() => toggleUserStatus(user)} type="button">{user.is_active ? <UserX size={16} /> : <UserCheck size={16} />}</button>
-                      <button aria-label={`Delete ${user.full_name}`} className="icon-button danger" disabled={busyId === user.id} onClick={() => deleteUser(user)} type="button"><Trash2 size={16} /></button>
+                      {user.role !== "admin" && <button aria-label={`Delete ${user.full_name}`} className="icon-button danger" disabled={busyId === user.id} onClick={() => deleteUser(user)} type="button"><Trash2 size={16} /></button>}
                     </div>
                   )}
                 </article>
@@ -365,10 +427,25 @@ const AdminWorkspace = () => {
       {editingUser && (
         <Dialog description={`Email remains locked: ${editingUser.email}`} onClose={() => setEditingUser(null)} title={`Edit ${editingUser.role}`}>
           <form className="dialog-form form-stack" onSubmit={saveUser}>
+            <div className="role-management-field">
+              <div><label htmlFor="managed-role">Account role</label><small>Changes apply immediately and alter this account's workspace permissions.</small></div>
+              <AppSelect id="managed-role" onValueChange={(value) => setUserForm({ ...userForm, role: value as ManageableRole })} options={MANAGEABLE_ROLE_OPTIONS} value={userForm.role} />
+            </div>
             <div className="field"><label htmlFor="managed-name">Name</label><input id="managed-name" maxLength={100} minLength={2} required value={userForm.full_name} onChange={(event) => setUserForm({ ...userForm, full_name: event.target.value })} /></div>
             <div className="field"><label htmlFor="managed-phone">Phone</label><input id="managed-phone" maxLength={20} type="tel" value={userForm.phone} onChange={(event) => setUserForm({ ...userForm, phone: event.target.value })} /></div>
             <div className="field"><label htmlFor="managed-location">Location</label><input id="managed-location" maxLength={150} value={userForm.location} onChange={(event) => setUserForm({ ...userForm, location: event.target.value })} /></div>
-            {editingUser.role === "vendor" && <div className="field"><label htmlFor="managed-pickup">Verified delivery pickup address</label><textarea id="managed-pickup" maxLength={500} minLength={10} onChange={(event) => setUserForm({ ...userForm, vendor_pickup_address: event.target.value })} required rows={3} value={userForm.vendor_pickup_address} /><small>Changing this re-verifies the route origin with the configured map service and affects future delivery quotes only.</small></div>}
+            {userForm.role === "vendor" && <>
+              <div className="field"><label htmlFor="managed-pickup">Verified delivery pickup address</label><textarea id="managed-pickup" maxLength={500} minLength={10} onChange={(event) => setUserForm({ ...userForm, vendor_pickup_address: event.target.value, vendor_pickup_latitude: null, vendor_pickup_longitude: null })} required rows={3} value={userForm.vendor_pickup_address} /><small>Changing the address clears the saved pin. Capture it again before saving.</small></div>
+              <LocationCapture
+                current={userForm.vendor_pickup_latitude != null && userForm.vendor_pickup_longitude != null ? { latitude: userForm.vendor_pickup_latitude, longitude: userForm.vendor_pickup_longitude } : null}
+                onResolved={(location) => setUserForm((current) => ({
+                  ...current,
+                  vendor_pickup_address: location.formatted_address,
+                  vendor_pickup_latitude: location.latitude,
+                  vendor_pickup_longitude: location.longitude,
+                }))}
+              />
+            </>}
             <div className="dialog-actions"><button className="button button-quiet" onClick={() => setEditingUser(null)} type="button">Cancel</button><button className="button button-primary" disabled={busyId === editingUser.id} type="submit">Save changes</button></div>
           </form>
         </Dialog>

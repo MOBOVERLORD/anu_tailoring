@@ -479,6 +479,72 @@ The presets follow Indian vocational tailoring material rather than one universa
 - Scoped the Python packaging exclusion to the repository root as `/lib/`.
 - Verified the frontend production build (`tsc -b && vite build`) passes.
 
+## Precise location capture
+
+- Added a reusable responsive **Locate me** panel to customer delivery-address
+  create/edit dialogs and administrator vendor create/edit flows.
+- Browser geolocation is used only to obtain the device coordinates; all reverse
+  geocoding remains behind the authenticated backend API so map-provider calls
+  and credentials are not exposed to React.
+- The UI shows the resolved location, latitude/longitude, estimated device
+  accuracy, privacy guidance, and an OpenStreetMap link. Saved customer address
+  cards also show when a precise pin is available.
+- Captured coordinates and provider-qualified place references are persisted in
+  the existing address/vendor coordinate columns, so no database migration was
+  required. Editing address text clears the old pin to prevent stale routing.
+- Backend validation accepts only Indian locations and checks the captured
+  location against the typed PIN code when one is present.
+- Confirmed a reverse lookup near Jyothi Pinnacle resolves to Whitefields /
+  Kondapur, Hyderabad, Telangana 500084 even though the building-name forward
+  search is absent from OpenStreetMap.
+- Python compilation, FastAPI route registration, frontend production build,
+  frontend lint, and live OpenStreetMap reverse-geocoding checks pass.
+- Refined the address flow so **Locate me** appears before the form fields and
+  reverse-geocoded street/area, city, state, PIN and country values populate the
+  form automatically. New customer addresses also start with the signed-in
+  user's name and phone, while vendor location capture fills the pickup address.
+- Added a Swiggy-style **Add receiver details** choice. It clears the prefilled
+  recipient name and phone, focuses the receiver form, and provides a **Use my
+  details** action to restore the signed-in user's contact information.
+- Refined that receiver choice into a compact **Myself / Someone else** segmented
+  selector above the contact fields, removing the second full-width card.
+- Added OpenStreetMap locality fallbacks for reverse-geocoding results that omit
+  a formal city boundary. Localities returned as suburb/neighbourhood (such as
+  Nizampet) now populate the City field instead of leaving it blank.
+- Fixed address saving after location capture: editing floor/building/street text
+  no longer discards the captured coordinates. The reverse-geocode response now
+  includes a user-bound, 30-minute signed location token; Save validates it and
+  persists latitude, longitude and the provider place ID without a second map
+  provider request. Existing saved coordinates are reused when unchanged.
+
+## Super-admin role management
+
+- Added a super-admin-only role selector for customer, vendor and administrator
+  assignments. Super-admin accounts cannot be assigned or modified through the
+  directory, preventing accidental privilege escalation or self-demotion.
+- Added a Staff directory for administrator accounts, visible to super admins,
+  and role badges throughout account cards.
+- Role changes require explicit confirmation, take effect immediately, move the
+  account to the correct directory, revoke its existing sessions so permissions
+  cannot remain stale, and create an account activity notification.
+- Promoting an account to vendor requires a verified pickup address and precise
+  location. Administrator deletion is blocked until the role is changed or the
+  account is deactivated, preserving review/audit references.
+
+## Map-first delivery addresses
+
+- Replaced editable City, State and PIN fields in the customer address dialog
+  with a location-first flow. Those components now come only from the verified
+  reverse-geocode result; customers edit only recipient and building/delivery
+  details that a map cannot provide.
+- Added an interactive OpenStreetMap/Leaflet picker for deliveries to another
+  location. Customers can pan and zoom, then tap the exact building or entrance;
+  broad map taps zoom in before a location can be selected.
+- Kept **Locate me** for the current device location. Both paths use the same
+  authenticated backend reverse-geocoding endpoint and signed location token.
+- Save remains disabled until latitude, longitude, locality, state and Indian
+  PIN code are resolved, preventing incomplete delivery destinations.
+
 ## Recommended next milestone
 
 1. Replace startup compatibility statements with versioned Alembic migrations

@@ -23,6 +23,11 @@ class GeocodedLocation:
     place_id: str
     latitude: float
     longitude: float
+    street_address: str | None = None
+    city: str | None = None
+    state: str | None = None
+    postal_code: str | None = None
+    country: str | None = None
 
 
 @dataclass(frozen=True)
@@ -114,6 +119,87 @@ def _osm_headers() -> dict[str, str]:
     }
 
 
+def _first_address_value(address: dict, *keys: str) -> str | None:
+    for key in keys:
+        value = str(address.get(key, "")).strip()
+        if value:
+            return value
+    return None
+
+
+def _osm_address_fields(result: dict) -> dict[str, str | None]:
+    address = result.get("address") or {}
+    road = _first_address_value(address, "road", "pedestrian", "path")
+    house_number = _first_address_value(address, "house_number")
+    feature_name = str(result.get("name", "")).strip() or None
+    area = _first_address_value(
+        address, "neighbourhood", "suburb", "quarter", "residential", "hamlet"
+    )
+    street_parts: list[str] = []
+    if feature_name and feature_name not in {road, area}:
+        street_parts.append(feature_name)
+    if house_number and road:
+        street_parts.append(f"{house_number}, {road}")
+    elif house_number or road:
+        street_parts.append(house_number or road or "")
+    if area and area not in street_parts:
+        street_parts.append(area)
+
+    return {
+        "street_address": ", ".join(part for part in street_parts if part) or None,
+        "city": (
+            _first_address_value(
+                address, "city", "town", "village", "municipality", "city_district"
+            )
+            # Indian OpenStreetMap results frequently omit city boundaries and
+            # expose the usable locality as suburb (for example, Nizampet).
+            or area
+            or _first_address_value(address, "state_district", "county")
+        ),
+        "state": _first_address_value(address, "state"),
+        "postal_code": _first_address_value(address, "postcode"),
+        "country": _first_address_value(address, "country"),
+    }
+
+
+def _google_address_fields(result: dict) -> dict[str, str | None]:
+    by_type: dict[str, str] = {}
+    for component in result.get("address_components", []):
+        value = str(component.get("long_name", "")).strip()
+        for component_type in component.get("types", []):
+            if value and component_type not in by_type:
+                by_type[component_type] = value
+
+    street_parts = []
+    premise = by_type.get("subpremise") or by_type.get("premise")
+    street_number = by_type.get("street_number")
+    route = by_type.get("route")
+    if premise:
+        street_parts.append(premise)
+    if street_number and route:
+        street_parts.append(f"{street_number}, {route}")
+    elif street_number or route:
+        street_parts.append(street_number or route or "")
+    for component_type in (
+        "neighborhood", "sublocality_level_2", "sublocality_level_1", "sublocality"
+    ):
+        value = by_type.get(component_type)
+        if value and value not in street_parts:
+            street_parts.append(value)
+
+    return {
+        "street_address": ", ".join(part for part in street_parts if part) or None,
+        "city": (
+            by_type.get("locality")
+            or by_type.get("postal_town")
+            or by_type.get("administrative_area_level_2")
+        ),
+        "state": by_type.get("administrative_area_level_1"),
+        "postal_code": by_type.get("postal_code"),
+        "country": by_type.get("country"),
+    }
+
+
 async def _respect_osm_rate_limit() -> None:
     global _osm_last_request_at
     interval = max(0.0, settings.OSM_MIN_REQUEST_INTERVAL_SECONDS)
@@ -164,6 +250,51 @@ async def _geocode_with_openstreetmap(address: str) -> GeocodedLocation:
         place_id=f"osm:{osm_type}:{osm_id}",
         latitude=latitude,
         longitude=longitude,
+    )
+
+
+async def _reverse_geocode_with_openstreetmap(
+    latitude: float, longitude: float
+) -> GeocodedLocation:
+    await _respect_osm_rate_limit()
+    try:
+        async with httpx.AsyncClient(timeout=settings.MAPS_HTTP_TIMEOUT_SECONDS) as client:
+            response = await client.get(
+                f"{settings.OSM_NOMINATIM_URL.rstrip('/')}/reverse",
+                headers=_osm_headers(),
+                params={
+                    "lat": latitude,
+                    "lon": longitude,
+                    "format": "jsonv2",
+                    "addressdetails": 1,
+                    "zoom": 18,
+                },
+            )
+            response.raise_for_status()
+            result = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise MapProviderError("OpenStreetMap could not identify this location right now") from exc
+
+    if not isinstance(result, dict) or result.get("error"):
+        raise MapProviderError("OpenStreetMap could not find an address at this location")
+    address = result.get("address") or {}
+    if str(address.get("country_code", "")).lower() != "in":
+        raise MapProviderError("The selected location must be within India")
+    try:
+        resolved_latitude = float(result["lat"])
+        resolved_longitude = float(result["lon"])
+        osm_type = str(result["osm_type"])
+        osm_id = str(result["osm_id"])
+        formatted_address = str(result["display_name"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise MapProviderError("OpenStreetMap returned an incomplete location result") from exc
+    return GeocodedLocation(
+        formatted_address=formatted_address,
+        place_id=f"osm:{osm_type}:{osm_id}",
+        # Preserve the device point rather than snapping delivery to the map feature centroid.
+        latitude=latitude if -90 <= latitude <= 90 else resolved_latitude,
+        longitude=longitude if -180 <= longitude <= 180 else resolved_longitude,
+        **_osm_address_fields(result),
     )
 
 
@@ -238,6 +369,50 @@ async def _geocode_with_google(address: str) -> GeocodedLocation:
         raise MapProviderError("Google returned an incomplete address result") from exc
 
 
+async def _reverse_geocode_with_google(
+    latitude: float, longitude: float
+) -> GeocodedLocation:
+    if not settings.GOOGLE_MAPS_API_KEY:
+        raise MapProviderError("Google Maps delivery calculation is not configured")
+    try:
+        async with httpx.AsyncClient(timeout=settings.MAPS_HTTP_TIMEOUT_SECONDS) as client:
+            response = await client.get(
+                "https://maps.googleapis.com/maps/api/geocode/json",
+                params={
+                    "latlng": f"{latitude},{longitude}",
+                    "result_type": "street_address|premise|subpremise|route",
+                    "key": settings.GOOGLE_MAPS_API_KEY,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise MapProviderError("Google could not identify this location right now") from exc
+
+    if payload.get("status") == "ZERO_RESULTS":
+        raise MapProviderError("Google could not find an address at this location")
+    if payload.get("status") != "OK" or not payload.get("results"):
+        raise MapProviderError("Google Maps rejected the location lookup")
+    result = payload["results"][0]
+    country_codes = {
+        component.get("short_name")
+        for component in result.get("address_components", [])
+        if "country" in component.get("types", [])
+    }
+    if "IN" not in country_codes:
+        raise MapProviderError("The selected location must be within India")
+    try:
+        return GeocodedLocation(
+            formatted_address=result["formatted_address"],
+            place_id=f"google:{result['place_id']}",
+            latitude=latitude,
+            longitude=longitude,
+            **_google_address_fields(result),
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise MapProviderError("Google returned an incomplete location result") from exc
+
+
 async def _route_with_google(
     origin_latitude: float,
     origin_longitude: float,
@@ -293,6 +468,18 @@ async def geocode_address(address: str) -> GeocodedLocation:
     if configured_maps_provider() == "openstreetmap":
         return await _geocode_with_openstreetmap(address)
     return await _geocode_with_google(address)
+
+
+async def reverse_geocode_location(
+    latitude: float, longitude: float
+) -> GeocodedLocation:
+    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+        raise MapProviderError("The device returned invalid location coordinates")
+    if not maps_configured():
+        raise MapProviderError(maps_configuration_message())
+    if configured_maps_provider() == "openstreetmap":
+        return await _reverse_geocode_with_openstreetmap(latitude, longitude)
+    return await _reverse_geocode_with_google(latitude, longitude)
 
 
 async def compute_driving_route(

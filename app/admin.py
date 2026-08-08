@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -10,9 +10,10 @@ from sqlalchemy.orm import selectinload
 from app.auth import hash_password, require_admin, require_super_admin
 from app.database import get_db
 from app.design_service import serialize_design_async, serialize_designs_async
-from app.deliveries import geocode_vendor_pickup
+from app.deliveries import geocode_vendor_pickup, geocode_vendor_pickup_coordinates
 from app.maps import MapProviderError
 from app.models import (
+    AuthSession,
     Design,
     DesignReview,
     DesignStatus,
@@ -202,7 +203,15 @@ async def create_vendor(
         role=UserRole.VENDOR.value,
     )
     try:
-        await geocode_vendor_pickup(vendor, payload.pickup_address)
+        if payload.pickup_latitude is not None and payload.pickup_longitude is not None:
+            await geocode_vendor_pickup_coordinates(
+                vendor,
+                payload.pickup_address,
+                payload.pickup_latitude,
+                payload.pickup_longitude,
+            )
+        else:
+            await geocode_vendor_pickup(vendor, payload.pickup_address)
     except MapProviderError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     db.add(vendor)
@@ -222,10 +231,10 @@ async def _managed_user(user_id: int, db: AsyncSession) -> User:
     user = await db.scalar(select(User).where(User.id == user_id).with_for_update())
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if user.role not in {UserRole.CUSTOMER.value, UserRole.VENDOR.value}:
+    if user.role == UserRole.SUPER_ADMIN.value:
         raise HTTPException(
             status_code=403,
-            detail="Staff accounts cannot be changed from user management",
+            detail="Super-admin accounts cannot be changed from user management",
         )
     return user
 
@@ -234,7 +243,7 @@ async def _managed_user(user_id: int, db: AsyncSession) -> User:
 async def update_managed_user(
     user_id: int,
     payload: AdminUserUpdate,
-    _: User = Depends(require_super_admin),
+    _super_admin: User = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db),
 ):
     user = await _managed_user(user_id, db)
@@ -245,19 +254,64 @@ async def update_managed_user(
         if duplicate:
             raise HTTPException(status_code=409, detail="Phone number is already registered")
 
-    if (
-        user.role == UserRole.VENDOR.value
-        and payload.vendor_pickup_address is not None
+    requested_role = payload.role or user.role
+    previous_role = user.role
+    pickup_coordinates_supplied = (
+        payload.vendor_pickup_latitude is not None
+        and payload.vendor_pickup_longitude is not None
+    )
+    pickup_address_changed = (
+        payload.vendor_pickup_address is not None
         and payload.vendor_pickup_address.strip() != (user.vendor_pickup_address or "")
+    )
+    if requested_role == UserRole.VENDOR.value and (
+        pickup_coordinates_supplied or pickup_address_changed
     ):
         try:
-            await geocode_vendor_pickup(user, payload.vendor_pickup_address)
+            pickup_address = payload.vendor_pickup_address or user.vendor_pickup_address or ""
+            if pickup_coordinates_supplied:
+                await geocode_vendor_pickup_coordinates(
+                    user,
+                    pickup_address,
+                    payload.vendor_pickup_latitude,
+                    payload.vendor_pickup_longitude,
+                )
+            else:
+                await geocode_vendor_pickup(user, pickup_address)
         except MapProviderError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if requested_role == UserRole.VENDOR.value and not (
+        user.vendor_pickup_address
+        and user.vendor_pickup_place_id
+        and user.vendor_pickup_latitude is not None
+        and user.vendor_pickup_longitude is not None
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="A vendor role requires a verified pickup address and precise location",
+        )
 
     user.full_name = payload.full_name
     user.phone = payload.phone
     user.location = payload.location.strip() if payload.location else None
+    user.role = requested_role
+    if requested_role != previous_role:
+        await db.execute(
+            update(AuthSession)
+            .where(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None))
+            .values(revoked_at=datetime.now(timezone.utc))
+        )
+        db.add(Notification(
+            user_id=user.id,
+            title="Account role updated",
+            message=(
+                f"Your Vastrivo role changed from {previous_role.replace('_', ' ')} "
+                f"to {requested_role.replace('_', ' ')}."
+            ),
+            notification_type="account_role_changed",
+            link="/profile?section=activity",
+        ))
     try:
         await db.commit()
     except IntegrityError:
@@ -288,6 +342,11 @@ async def delete_managed_user(
     db: AsyncSession = Depends(get_db),
 ):
     user = await _managed_user(user_id, db)
+    if user.role == UserRole.ADMIN.value:
+        raise HTTPException(
+            status_code=409,
+            detail="Change this administrator to customer or deactivate the account before deletion",
+        )
     if user.role == UserRole.VENDOR.value:
         design_reference = await db.scalar(select(Design.id).where(Design.vendor_id == user.id).limit(1))
         product_reference = await db.scalar(select(Product.id).where(Product.vendor_id == user.id).limit(1))
