@@ -471,6 +471,14 @@ The presets follow Indian vocational tailoring material rather than one universa
   Python compilation, production UI build, frontend lint, and local browser
   console checks pass without making an external geocoding or routing request.
 
+## Cloud Build source packaging fix
+
+- Fixed the root `.gitignore` `lib/` rule, which unintentionally excluded
+  `frontend/src/lib/api.ts`, `formLimits.ts`, and `utils.ts` from GitHub and
+  caused Cloud Build's TypeScript step to fail after source checkout.
+- Scoped the Python packaging exclusion to the repository root as `/lib/`.
+- Verified the frontend production build (`tsc -b && vite build`) passes.
+
 ## Recommended next milestone
 
 1. Replace startup compatibility statements with versioned Alembic migrations
