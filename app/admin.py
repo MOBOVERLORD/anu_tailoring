@@ -11,7 +11,7 @@ from app.auth import hash_password, require_admin, require_super_admin
 from app.database import get_db
 from app.design_service import serialize_design_async, serialize_designs_async
 from app.deliveries import geocode_vendor_pickup
-from app.google_maps import GoogleMapsError
+from app.maps import MapProviderError
 from app.models import (
     Design,
     DesignReview,
@@ -203,7 +203,7 @@ async def create_vendor(
     )
     try:
         await geocode_vendor_pickup(vendor, payload.pickup_address)
-    except GoogleMapsError as exc:
+    except MapProviderError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     db.add(vendor)
     try:
@@ -252,7 +252,7 @@ async def update_managed_user(
     ):
         try:
             await geocode_vendor_pickup(user, payload.vendor_pickup_address)
-        except GoogleMapsError as exc:
+        except MapProviderError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     user.full_name = payload.full_name

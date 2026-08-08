@@ -8,6 +8,7 @@ import { AppSelect } from "@/components/ui/AppSelect"
 import { api, getCurrentUser } from "@/lib/api"
 import { boundedNumber } from "@/lib/formLimits"
 import type { DeliveryAddress, DeliveryQuote, DesignImage, Product, ProductOrder, UserProfile } from "@/types/api"
+import { MapAttribution } from "@/components/MapAttribution"
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
 const SHOP_PRODUCT_TYPES = [{ value: "all", label: "All product types" }, { value: "ready_made", label: "Ready-made" }, { value: "fabric", label: "Fabric" }]
@@ -112,7 +113,7 @@ const Shop = () => {
   return (
     <div className="page shop-page">
       <section className="workspace-heading shop-heading">
-        <div><p className="eyebrow"><ShoppingBag size={15} /> Anu shop</p><h1>Clothes and fabrics, from verified vendors</h1><p>Buy ready-made garments or fabric by length, with delivery calculated from the vendor to your address.</p></div>
+        <div><p className="eyebrow"><ShoppingBag size={15} /> Vastrivo shop</p><h1>Clothes and fabrics, from verified vendors</h1><p>Buy ready-made garments or fabric by length, with delivery calculated from the vendor to your address.</p></div>
         <span className="queue-count">{products.length} available</span>
       </section>
 
@@ -160,7 +161,7 @@ const Shop = () => {
                     {selected.sizes.length > 0 && <div className="field"><label htmlFor="product-size">Size</label><AppSelect id="product-size" onValueChange={setSize} options={selected.sizes.map((item) => ({ value: item, label: item }))} value={size} /></div>}
                   </div>
                   <div className="field"><label htmlFor="product-address">Deliver to</label><AppSelect id="product-address" onValueChange={(value) => { setAddressId(Number(value)); setQuote(null) }} options={addresses.map((address) => ({ value: String(address.id), label: `${address.recipient_name} · ${address.street_address}, ${address.city}` }))} placeholder="Choose a delivery address" value={String(addressId)} /></div>
-                  {!quote ? <button className="button button-primary button-wide product-purchase-action" disabled={quoting || !addressId || quantity <= 0 || quantity > selected.stock_quantity} onClick={getQuote} type="button">{quoting ? <LoaderCircle className="spin" size={17} /> : <Truck size={17} />} Calculate delivery &amp; total</button> : <div className="shop-total"><div><span>Products</span><strong>{money(selected.price * quantity)}</strong></div><div><span>Delivery · {(quote.distance_meters / 1000).toFixed(1)} km</span><strong>{money(quote.delivery_cost)}</strong></div><div><span>Total</span><strong>{money(selected.price * quantity + quote.delivery_cost)}</strong></div></div>}
+                  {!quote ? <button className="button button-primary button-wide product-purchase-action" disabled={quoting || !addressId || quantity <= 0 || quantity > selected.stock_quantity} onClick={getQuote} type="button">{quoting ? <LoaderCircle className="spin" size={17} /> : <Truck size={17} />} Calculate delivery &amp; total</button> : <div className="shop-total"><div><span>Products</span><strong>{money(selected.price * quantity)}</strong></div><div><span>Delivery · {(quote.distance_meters / 1000).toFixed(1)} km</span><strong>{money(quote.delivery_cost)}</strong></div><div><span>Total</span><strong>{money(selected.price * quantity + quote.delivery_cost)}</strong></div><MapAttribution provider={quote.maps_provider} /></div>}
                   {quote && <button className="button button-primary button-wide" disabled={ordering} onClick={placeOrder} type="button">{ordering ? <LoaderCircle className="spin" size={17} /> : <ShoppingBag size={17} />} Place order</button>}
                 </div>
               )}

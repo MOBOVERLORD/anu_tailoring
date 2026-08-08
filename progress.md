@@ -1,6 +1,6 @@
-# Anu Tailoring — Progress
+# Vastrivo — Progress
 
-Last updated: 2026-08-02
+Last updated: 2026-08-08
 
 ## Current milestone
 
@@ -197,7 +197,7 @@ customer/vendor order-invoice workflow across React, FastAPI, and PostgreSQL.
   messages. Login credential failures retain the backend's specific error
   instead of being mislabeled as an expired session.
 - Registration now explains that vendor access is reviewed separately and shows
-  the temporary contact address `vendors@anutailoring.com`.
+  the temporary contact address `vendors@vastrivo.com`.
 
 ### Completed
 
@@ -247,7 +247,7 @@ customer/vendor order-invoice workflow across React, FastAPI, and PostgreSQL.
   - Admin Delivery Management distinguishes shop orders from tailoring orders.
   - Added live schema/API smoke coverage in
     `scripts/verify_product_shop.py`.
-- Responsive login screen with Anu Tailoring brand mark, icons, password visibility control, loading/error feedback, and light/dark themes.
+- Responsive login screen with Vastrivo brand mark, icons, password visibility control, loading/error feedback, and light/dark themes.
 - Login accepts existing passwords without applying registration-length rules;
   password-strength validation remains limited to account creation.
 - Registration screen updated to the same design language.
@@ -348,7 +348,7 @@ The presets follow Indian vocational tailoring material rather than one universa
 
 ## Product detail reference refinement
 
-- Reworked the shop product dialog around the reviewed UI Design Daily product-info reference while retaining Anu Tailoring's warm editorial theme.
+- Reworked the shop product dialog around the reviewed UI Design Daily product-info reference while retaining Vastrivo's warm editorial theme.
 - Added a larger image-led gallery with full-size affordance, image count, thumbnail hover feedback, and existing lightbox support.
 - Strengthened the purchasing hierarchy with verified listing and vendor context, prominent pricing, clear in-stock/low-stock feedback, product facts, and a separated option-selection area.
 - Made delivery calculation the primary full-width action before order placement, without changing backend pricing, permission, or delivery-quote rules.
@@ -356,7 +356,7 @@ The presets follow Indian vocational tailoring material rather than one universa
 
 ## Vendor product editor refinement
 
-- Reworked the vendor add/edit product dialog around the reviewed OS ZA e-commerce CMS reference while preserving Anu Tailoring's theme and moderation workflow.
+- Reworked the vendor add/edit product dialog around the reviewed OS ZA e-commerce CMS reference while preserving Vastrivo's theme and moderation workflow.
 - Expanded the editor into a responsive CMS-style layout: product details, customer options, pricing, and stock use the main column; photos and classification use a focused side panel.
 - Promoted the first uploaded image to a large labelled shop-cover preview, with compact previews for the remaining images and a clearer add-more-images control.
 - Replaced comma-separated ready-made size entry with reference-style selectable XS–XXL pills and an expandable custom-size control. Removed colour variants from both the vendor editor and customer checkout; edited products now save with no colour variants.
@@ -413,6 +413,64 @@ The presets follow Indian vocational tailoring material rather than one universa
 - Product-shop PostgreSQL migration and administrator API smoke test — passing.
 - WebSocket ticket authentication and handshake regression — passing.
 
+## Transactional email and password recovery
+
+- Added provider-isolated backend email delivery through Resend's HTTPS API;
+  no email provider API or credential is exposed to React.
+- Added secure forgot-password and reset-password UI flows, one-time 20-minute
+  reset tokens stored only as SHA-256 digests, generic account-enumeration-safe
+  request responses, one-minute resend throttling, and full session revocation
+  after a successful password change.
+- Added welcome and password-change security messages plus a transactional email
+  outbox automatically created with every new in-app notification/order update.
+  The outbox uses retry state and delivers after successful mutating requests.
+- Added local console-email configuration, Secret Manager / Cloud Run console
+  instructions, and optional deployment-helper mapping for `RESEND_API_KEY`.
+- Resend outbox requests include a stable per-row idempotency key to prevent
+  duplicate notification emails when a provider response is retried.
+- Brand-sensitive email text now reads from `APP_NAME` and `PUBLIC_APP_URL`, so
+  the selected replacement brand can be applied without changing auth logic.
+- Production UI build, frontend lint, Python compilation, FastAPI/PostgreSQL
+  startup, route registration, safe public error responses, and 440 px mobile
+  browser rendering all pass.
+
+## Brand rename — Vastrivo selected
+
+- Preliminary exact-name web, Google Play, Apple App Store, and public trademark
+  searches on 7 August 2026 found no obvious tailoring/clothing app or website
+  using **Vastrivo**, **Sutrivo**, or **Sewvani**.
+- Preferred spelling is **Vastrivo** (`VAS-tri-vo`), followed by **Sutrivo**
+  (`SOO-tri-vo`) and **Sewvani** (`soh-VAA-nee`). A registrar and formal Indian
+  trademark clearance are still required immediately before registration.
+- Selected **Vastrivo** as the replacement brand and applied it to visible copy,
+  document titles, package labels, email defaults, vendor contact branding,
+  favicon, browser storage keys, session request identifiers, and API metadata.
+- Retained the existing `anu-tailoring` Cloud Run service name and GCP bucket
+  identifiers to avoid creating duplicate infrastructure or disconnecting media.
+- Verified the final sign-in page at 440 × 956: full Vastrivo wordmark fits the
+  mobile header, document title is `Sign in · Vastrivo`, the new favicon loads,
+  and no legacy customer-facing brand text remains.
+- Authentication regression passes with `VastrivoUI`, `vastrivo_refresh`, the
+  new JWT issuer/audience, refresh rotation, and logout revocation.
+
+## OpenStreetMap delivery routing
+
+- Added a backend `MAPS_PROVIDER` switch with `openstreetmap` as the default and
+  retained `google` as an optional server-only provider.
+- Added Nominatim-compatible Indian address geocoding and OSRM-compatible driving
+  routes, provider-qualified cached location references, and provider binding in
+  signed delivery quotes so a provider change invalidates stale quotes safely.
+- Public OpenStreetMap endpoints are throttled, identified with a Vastrivo user
+  agent, cached through the existing 29-day geocode policy, and blocked by
+  default in production unless explicitly acknowledged. Managed or self-hosted
+  compatible endpoints are required for production-scale customer addresses.
+- Stored the routing provider with every delivery, added visible OpenStreetMap
+  attribution wherever route-derived data is shown, and added an admin link that
+  opens the saved pickup and destination coordinates on OpenStreetMap.
+- Offline provider-contract regression, live PostgreSQL compatibility migration,
+  Python compilation, production UI build, frontend lint, and local browser
+  console checks pass without making an external geocoding or routing request.
+
 ## Recommended next milestone
 
 1. Replace startup compatibility statements with versioned Alembic migrations
@@ -420,8 +478,8 @@ The presets follow Indian vocational tailoring material rather than one universa
 2. Add API-level integration tests for role authorization, backend upload
    completion, moderation transitions, bucket cleanup, and notification ownership.
 3. Add per-measurement “how to measure” guidance and diagrams.
-4. Add a transactional outbox/retry worker for bucket deletion, vendor business
-   profiles, admin audit logs, password reset, and forced temporary-password change.
+4. Add a Cloud Tasks dispatcher for outbox retries at production scale, plus
+   vendor business profiles, admin audit logs, and forced temporary-password change.
 5. Move persisted monetary columns from FLOAT to PostgreSQL NUMERIC, generate
    image thumbnails, and add server-side catalog/order search before large-scale use.
 6. Integrate a payment gateway and replace the current offline payment-reference

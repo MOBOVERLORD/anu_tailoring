@@ -17,7 +17,7 @@ const showHelp = process.argv.includes("--help") || process.argv.includes("-h")
 
 if (showHelp) {
   console.log(`
-Anu Tailoring development launcher
+Vastrivo development launcher
 
 Usage:
   start-dev.cmd                 Set up and start UI + backend
@@ -32,7 +32,7 @@ Environment:
 }
 
 function fail(message) {
-  console.error(`\n[Anu Tailoring] ${message}\n`)
+  console.error(`\n[Vastrivo] ${message}\n`)
   process.exit(1)
 }
 
@@ -120,7 +120,7 @@ function ensurePythonEnvironment() {
   }
 
   const requirementsPath = join(projectRoot, "requirements.txt")
-  const requirementsStamp = join(virtualEnvironmentDirectory, ".anu-requirements.sha256")
+  const requirementsStamp = join(virtualEnvironmentDirectory, ".vastrivo-requirements.sha256")
   const currentHash = fileHash(requirementsPath)
   const savedHash = existsSync(requirementsStamp)
     ? readFileSync(requirementsStamp, "utf8").trim()
@@ -141,7 +141,7 @@ function ensurePythonEnvironment() {
 function ensureFrontendEnvironment() {
   const lockfilePath = join(frontendDirectory, "package-lock.json")
   const nodeModulesDirectory = join(frontendDirectory, "node_modules")
-  const packageStamp = join(nodeModulesDirectory, ".anu-package-lock.sha256")
+  const packageStamp = join(nodeModulesDirectory, ".vastrivo-package-lock.sha256")
   const currentHash = fileHash(lockfilePath)
   const savedHash = existsSync(packageStamp)
     ? readFileSync(packageStamp, "utf8").trim()
@@ -174,13 +174,13 @@ ensurePythonEnvironment()
 ensureFrontendEnvironment()
 
 if (setupOnly) {
-  console.log("\n[Anu Tailoring] Setup complete.")
+  console.log("\n[Vastrivo] Setup complete.")
   process.exit(0)
 }
 
 console.log(`
 ============================================================
- Anu Tailoring development environment
+ Vastrivo development environment
 ------------------------------------------------------------
  UI:          http://127.0.0.1:5173
  Backend API: http://127.0.0.1:8000
@@ -259,7 +259,7 @@ prefixOutput(frontend.stderr, "frontend", process.stderr)
 function shutdown(exitCode = 0) {
   if (stopping) return
   stopping = true
-  console.log("\n[Anu Tailoring] Stopping UI and backend...")
+  console.log("\n[Vastrivo] Stopping UI and backend...")
   stopProcessTree(frontend)
   stopProcessTree(backend)
   process.exit(exitCode)

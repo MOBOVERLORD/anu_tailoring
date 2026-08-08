@@ -34,6 +34,8 @@ const Layout = () => {
       "/": "Designs",
       "/login": "Sign in",
       "/register": "Create account",
+      "/forgot-password": "Reset password",
+      "/reset-password": "Choose a new password",
       "/orders": "Orders",
       "/shop": "Shop",
       "/profile": "Profile & settings",
@@ -42,7 +44,7 @@ const Layout = () => {
       "/vendor/sales-orders": "Vendor sales orders",
       "/admin": "Administration",
     }
-    document.title = `${titles[location.pathname] || "Anu Tailoring"} · Anu Tailoring`
+    document.title = `${titles[location.pathname] || "Vastrivo"} · Vastrivo`
   }, [location.pathname])
 
   useEffect(() => {

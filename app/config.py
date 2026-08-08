@@ -5,7 +5,9 @@ from typing import Optional
 
 class Settings(BaseSettings):
     # Application Config
-    PROJECT_NAME: str = "Tailored Clothing API"
+    PROJECT_NAME: str = "Vastrivo API"
+    APP_NAME: str = "Vastrivo"
+    PUBLIC_APP_URL: str = "http://localhost:5173"
     ENVIRONMENT: str = "development"
 
     # Database Settings
@@ -48,8 +50,8 @@ class Settings(BaseSettings):
     # run with a known/shared secret key.
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
-    JWT_ISSUER: str = "anu-tailoring-api"
-    JWT_AUDIENCE: str = "anu-tailoring-ui"
+    JWT_ISSUER: str = "vastrivo-api"
+    JWT_AUDIENCE: str = "vastrivo-ui"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 10
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 30
     MAX_ACTIVE_SESSIONS_PER_USER: int = 5
@@ -62,12 +64,30 @@ class Settings(BaseSettings):
     GCS_SIGNING_SERVICE_ACCOUNT: Optional[EmailStr] = None
     MAX_DESIGN_IMAGE_MB: int = 2
     MAX_INVOICE_ATTACHMENT_MB: int = 5
-    VENDOR_CONTACT_EMAIL: str = "vendors@anutailoring.com"
+    VENDOR_CONTACT_EMAIL: str = "vendors@vastrivo.com"
 
+    # Transactional email. Use `console` only for local development. On Cloud
+    # Run, keep RESEND_API_KEY in Secret Manager and use `resend`.
+    EMAIL_PROVIDER: str = "disabled"
+    RESEND_API_KEY: Optional[str] = None
+    EMAIL_FROM_ADDRESS: Optional[EmailStr] = None
+    EMAIL_FROM_NAME: Optional[str] = None
+    EMAIL_NOTIFICATIONS_ENABLED: bool = False
+    PASSWORD_RESET_EXPIRE_MINUTES: int = 20
+    EMAIL_HTTP_TIMEOUT_SECONDS: float = 10.0
+
+    # Map/geocoding provider. Public OSM endpoints are for low-volume local
+    # development only. Production should use managed/self-hosted compatible
+    # endpoints, or switch to Google with a server-only key.
+    MAPS_PROVIDER: str = "openstreetmap"
+    OSM_NOMINATIM_URL: str = "https://nominatim.openstreetmap.org"
+    OSM_ROUTING_URL: str = "https://router.project-osrm.org"
+    OSM_ALLOW_PUBLIC_SERVICES_IN_PRODUCTION: bool = False
+    OSM_MIN_REQUEST_INTERVAL_SECONDS: float = 1.05
+    MAPS_HTTP_TIMEOUT_SECONDS: float = 8.0
     # Called only by FastAPI. Store this key in .env locally and Secret Manager
     # in Cloud Run; never expose it through a VITE_ browser variable.
     GOOGLE_MAPS_API_KEY: Optional[str] = None
-    GOOGLE_MAPS_TIMEOUT_SECONDS: float = 8.0
 
     # Admin Account Initial Credentials
     ADMIN_NAME: str = "System Admin"

@@ -1314,6 +1314,19 @@ h3 {
   font-weight: 500;
 }
 
+.label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.label-row a {
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .field input,
 .field textarea,
 .field select {
@@ -1453,6 +1466,29 @@ h3 {
 .back-link {
   color: var(--brand);
   font-weight: 800;
+}
+
+.auth-recovery-card {
+  width: min(100%, 520px);
+}
+
+.auth-recovery-card .auth-lock {
+  margin-bottom: 20px;
+}
+
+.auth-recovery-card > .button {
+  margin-top: 24px;
+}
+
+.recovery-note {
+  margin-top: 22px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-soft);
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .secure-note {
@@ -6079,6 +6115,31 @@ select option,
 
 .delivery-route-summary > svg {
   color: var(--text-soft);
+}
+
+.map-attribution {
+  color: var(--text-muted);
+  display: inline-flex;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+a.map-attribution {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
+  text-underline-offset: 0.18em;
+}
+
+.delivery-map-actions {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin: 0.85rem 0;
+}
+
+.delivery-map-actions .button {
+  min-height: 38px;
 }
 
 .delivery-metrics {

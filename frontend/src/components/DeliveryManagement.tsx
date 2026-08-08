@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react"
-import { Check, CircleAlert, LoaderCircle, Mail, MapPin, Phone, RefreshCw, Route, Save, Truck } from "lucide-react"
+import { Check, CircleAlert, ExternalLink, LoaderCircle, Mail, MapPin, Phone, RefreshCw, Route, Save, Truck } from "lucide-react"
 import toast from "react-hot-toast"
 import { api } from "@/lib/api"
 import { AppSelect } from "@/components/ui/AppSelect"
 import { boundedNumber } from "@/lib/formLimits"
 import type { DeliveryPage, DeliveryRecord, DeliverySettings, DeliveryStatus } from "@/types/api"
+import { MapAttribution } from "@/components/MapAttribution"
+import { mapProviderLabel } from "@/utils/maps"
 
 const statuses: DeliveryStatus[] = ["quote_ready", "booked", "picked_up", "in_transit", "delivered", "cancelled"]
 
@@ -26,6 +28,7 @@ const DeliveryCard = ({ delivery, onUpdated }: DeliveryCardProps) => {
     admin_notes: delivery.admin_notes || "",
   })
   const [saving, setSaving] = useState(false)
+  const routeUrl = `https://www.openstreetmap.org/directions?engine=fossgis_osrm_car&route=${encodeURIComponent(`${delivery.origin_latitude},${delivery.origin_longitude};${delivery.destination_latitude},${delivery.destination_longitude}`)}`
 
   const save = async () => {
     setSaving(true)
@@ -67,6 +70,7 @@ const DeliveryCard = ({ delivery, onUpdated }: DeliveryCardProps) => {
         <span><small>Applied rate</small><strong>₹{delivery.price_per_100m}/100 m</strong></span>
         <span><small>Provider</small><strong>{delivery.provider_name}</strong></span>
       </div>
+      <div className="delivery-map-actions"><MapAttribution provider={delivery.maps_provider} /><a className="button button-secondary" href={routeUrl} rel="noreferrer" target="_blank"><ExternalLink size={15} /> Open route map</a></div>
       <div className="delivery-tracking-form">
         <div className="field"><label htmlFor={`delivery-status-${delivery.id}`}>Status</label><AppSelect id={`delivery-status-${delivery.id}`} onValueChange={(value) => setDraft({ ...draft, status: value as DeliveryStatus })} options={statuses.map((status) => ({ value: status, label: status.replaceAll("_", " ") }))} value={draft.status} /></div>
         <div className="field"><label htmlFor={`delivery-tracking-${delivery.id}`}>Tracking number</label><input id={`delivery-tracking-${delivery.id}`} maxLength={150} onChange={(event) => setDraft({ ...draft, tracking_number: event.target.value })} value={draft.tracking_number} /></div>
@@ -142,14 +146,14 @@ export const DeliveryManagement = ({ isSuperAdmin }: DeliveryManagementProps) =>
   return (
     <section className="admin-panel delivery-management">
       <div className="admin-panel-heading">
-        <div><p className="eyebrow">Delivery operations</p><h2>Pricing, provider & tracking</h2><p>Distance is calculated by Google from the verified vendor pickup point to the customer's saved address.</p></div>
+        <div><p className="eyebrow">Delivery operations</p><h2>Pricing, provider & tracking</h2><p>Distance is calculated by {mapProviderLabel(settings?.maps_provider || "openstreetmap")} from the verified vendor pickup point to the customer's saved address.</p>{settings?.maps_provider && <MapAttribution provider={settings.maps_provider} />}</div>
         <button className="button button-secondary" disabled={loading} onClick={load} type="button"><RefreshCw size={16} /> Refresh</button>
       </div>
 
       <div className="delivery-settings-layout">
         <form className="delivery-settings-card form-stack" onSubmit={saveSettings}>
           <header><Truck size={21} /><div><h3>Delivery provider</h3><p>One rate is charged for every started 100-metre block.</p></div></header>
-          {!settings?.maps_configured && <div className="delivery-config-warning"><CircleAlert size={18} /><p><strong>Google Maps key missing</strong><br />Set GOOGLE_MAPS_API_KEY on the backend before activating delivery.</p></div>}
+          {!settings?.maps_configured && <div className="delivery-config-warning"><CircleAlert size={18} /><p><strong>Map routing unavailable</strong><br />{settings?.maps_configuration_message || "Configure a backend map provider before activating delivery."}</p></div>}
           <div className="field"><label htmlFor="delivery-rate">Price per 0.1 km (₹)</label><input disabled={!isSuperAdmin} id="delivery-rate" max={10_000} min={0.01} onChange={(event) => setForm({ ...form, price_per_100m: boundedNumber(event.target.value, 0, 10_000) })} required step="0.01" type="number" value={form.price_per_100m} /></div>
           <div className="field"><label htmlFor="delivery-provider">Provider name</label><input disabled={!isSuperAdmin} id="delivery-provider" maxLength={150} minLength={2} onChange={(event) => setForm({ ...form, provider_name: event.target.value })} required value={form.provider_name} /></div>
           <div className="form-grid"><div className="field"><label htmlFor="delivery-email"><Mail size={14} /> Communication email</label><input disabled={!isSuperAdmin} id="delivery-email" maxLength={254} onChange={(event) => setForm({ ...form, provider_email: event.target.value })} required type="email" value={form.provider_email} /></div><div className="field"><label htmlFor="delivery-phone"><Phone size={14} /> Phone</label><input disabled={!isSuperAdmin} id="delivery-phone" maxLength={30} onChange={(event) => setForm({ ...form, provider_phone: event.target.value })} type="tel" value={form.provider_phone} /></div></div>

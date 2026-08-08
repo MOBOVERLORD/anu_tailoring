@@ -7,6 +7,7 @@ import { Dialog } from "@/components/Dialog"
 import { AppSelect } from "@/components/ui/AppSelect"
 import { api } from "@/lib/api"
 import type { DeliveryAddress, DeliveryQuote, Design, MeasurementProfile, Order } from "@/types/api"
+import { MapAttribution } from "@/components/MapAttribution"
 
 interface OrderDesignDialogProps {
   design: Design
@@ -135,7 +136,7 @@ export const OrderDesignDialog = ({ design, onClose }: OrderDesignDialogProps) =
           </div>
           <div className="delivery-quote-card">
             <Truck size={20} />
-            {quoteLoading ? <div><strong>Calculating delivery…</strong><small>Checking the driving route from the vendor.</small></div> : deliveryQuote ? <><div><small>{deliveryQuote.provider_name} · {(deliveryQuote.distance_meters / 1000).toFixed(1)} km</small><strong>Delivery ₹{deliveryQuote.delivery_cost.toLocaleString("en-IN")}</strong></div><span>₹{deliveryQuote.price_per_100m}/100 m</span></> : <div className="delivery-quote-error"><strong>Delivery quote unavailable</strong><small>{quoteError || "Select a valid delivery address."}</small></div>}
+            {quoteLoading ? <div><strong>Calculating delivery…</strong><small>Checking the driving route from the vendor.</small></div> : deliveryQuote ? <><div><small>{deliveryQuote.provider_name} · {(deliveryQuote.distance_meters / 1000).toFixed(1)} km</small><strong>Delivery ₹{deliveryQuote.delivery_cost.toLocaleString("en-IN")}</strong><MapAttribution provider={deliveryQuote.maps_provider} /></div><span>₹{deliveryQuote.price_per_100m}/100 m</span></> : <div className="delivery-quote-error"><strong>Delivery quote unavailable</strong><small>{quoteError || "Select a valid delivery address."}</small></div>}
           </div>
           <div className="order-total"><span>Estimated order total<small>Tailoring ₹{design.base_price.toLocaleString("en-IN")} + delivery{deliveryQuote ? ` ₹${deliveryQuote.delivery_cost.toLocaleString("en-IN")}` : ""}</small></span><strong>₹{(design.base_price + (deliveryQuote?.delivery_cost || 0)).toLocaleString("en-IN")}</strong></div>
           <p className="order-quote-note">Delivery is calculated automatically from the vendor pickup point to this address and cannot be changed by the vendor. The vendor will always provide the exact cloth requirement from your selected measurements. {clothSource === "vendor_supplied" ? "The vendor invoice will include cloth cost, and the vendor must attach the cloth bill before you finalize payment." : "Because you are providing the cloth, the vendor invoice cannot include a cloth cost."} Work begins after invoice approval and cloth readiness.</p>

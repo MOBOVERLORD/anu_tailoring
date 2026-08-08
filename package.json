@@ -1,8 +1,8 @@
 {
-  "name": "anu-tailoring",
+  "name": "vastrivo",
   "private": true,
   "version": "0.1.0",
-  "description": "Development launcher for the Anu Tailoring React and FastAPI application.",
+  "description": "Development launcher for the Vastrivo React and FastAPI marketplace.",
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "setup": "node scripts/dev.mjs --setup-only",

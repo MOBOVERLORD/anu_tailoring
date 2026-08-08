@@ -1,6 +1,6 @@
-# Anu Tailoring
+# Vastrivo
 
-Anu Tailoring is a React and TypeScript marketplace UI backed by FastAPI,
+Vastrivo is a React and TypeScript marketplace UI backed by FastAPI,
 PostgreSQL, and Google Cloud Storage. It supports customer, vendor, and admin
 workflows.
 
@@ -48,6 +48,60 @@ sessions. The refresh token is stored only in an `HttpOnly` cookie; the UI
 refreshes it automatically while active. Logout revokes the persisted session
 immediately. In production the cookie is also marked `Secure` and requires HTTPS.
 
+Password recovery uses one-time, 20-minute tokens. Only a SHA-256 token digest is
+stored in PostgreSQL, successful resets invalidate every active session, and the
+public request endpoint always returns the same response so it does not reveal
+whether an email is registered. In local development, `EMAIL_PROVIDER=console`
+prints the reset message in backend logs for testing.
+
+## Transactional email
+
+The backend sends welcome, password-reset, password-change, notification, and
+order-update emails. Browser code never calls the email provider. In-app
+notifications and their email work are written atomically to a retryable
+PostgreSQL outbox; delivery runs after successful mutating requests so the user
+response is not held open by the provider API.
+
+For production, use Resend's HTTPS Email API from Cloud Run. Google Cloud does
+not provide a general-purpose transactional email sender. Keep the Resend API
+key in Secret Manager and let only the backend call the provider.
+
+Console setup (no service-account file or provider key is committed):
+
+1. In Resend, add a sending domain (a dedicated subdomain such as
+   `updates.your-domain.example` is recommended), add the supplied SPF and DKIM
+   DNS records, and wait for the domain to become **Verified**. Create a
+   **Sending access** API key restricted to that domain.
+2. In **Google Cloud Console → Security → Secret Manager**, create a secret such
+   as `resend-api-key` and paste the API key as its first version.
+3. Open that secret's **Permissions** tab and grant the Cloud Run runtime service
+   account **Secret Manager Secret Accessor** for this secret only.
+4. In **Cloud Run → your service → Edit and deploy new revision → Variables &
+   Secrets**, expose that secret as `RESEND_API_KEY` and add:
+
+   ```text
+   EMAIL_PROVIDER=resend
+   EMAIL_FROM_ADDRESS=no-reply@updates.your-domain.example
+   EMAIL_FROM_NAME=Vastrivo
+   EMAIL_NOTIFICATIONS_ENABLED=true
+   PUBLIC_APP_URL=https://your-public-app-url.example
+   APP_NAME=Vastrivo
+   ```
+
+5. Deploy the revision and request a password-reset email. The sender address or
+   domain must be verified by Resend before production delivery will work.
+
+The deployment helper can map the secret without placing its value in Git:
+
+```powershell
+$env:GCP_RESEND_SECRET="resend-api-key"
+$env:PUBLIC_APP_URL="https://YOUR_CLOUD_RUN_OR_CUSTOM_DOMAIN"
+$env:APP_NAME="Vastrivo"
+$env:EMAIL_FROM_ADDRESS="no-reply@updates.YOUR_DOMAIN"
+$env:EMAIL_FROM_NAME="Vastrivo"
+.\deploy-gcp.cmd
+```
+
 Vendor image uploads require `GCS_BUCKET_NAME` and Google Application Default
 Credentials. For local GCS testing, authenticate once with:
 
@@ -60,21 +114,43 @@ to the runtime service-account email. The backend automatically impersonates
 that account for bucket operations using the developer's short-lived ADC.
 Never place the real value in `.env.example` or another tracked file.
 
-Automatic delivery pricing uses Google Maps Platform entirely from FastAPI.
-Enable the **Geocoding API** and **Routes API** in the Google Cloud console,
-create a separate server-side API key restricted to those two APIs, and add it
-only to the ignored local `.env`:
+Automatic delivery pricing uses a provider-neutral backend adapter. OpenStreetMap
+is the default for local development and uses Nominatim-compatible geocoding plus
+OSRM-compatible driving routes:
 
 ```text
+MAPS_PROVIDER=openstreetmap
+OSM_NOMINATIM_URL=https://nominatim.openstreetmap.org
+OSM_ROUTING_URL=https://router.project-osrm.org
+```
+
+The public OpenStreetMap endpoints have strict rate limits, no service-level
+guarantee, and privacy restrictions. The backend identifies itself, throttles
+requests, caches geocoded coordinates for 29 days, does not implement address
+autocomplete, and blocks the public endpoints in production by default. Before
+accepting real production orders, set `OSM_NOMINATIM_URL` and `OSM_ROUTING_URL`
+to managed or self-hosted compatible services. Do not send real customer address
+data to the public development endpoints.
+
+Review the official [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/)
+and [OSRM demo-server policy](https://github.com/Project-OSRM/osrm-backend/wiki/Api-usage-policy)
+before changing the production safeguard. Vastrivo does not embed or proxy the
+community tile service; the admin route button opens OpenStreetMap only after an
+administrator chooses it.
+
+Google remains available as a runtime fallback. Enable the **Geocoding API** and
+**Routes API**, create a server-only key restricted to those APIs, and configure:
+
+```text
+MAPS_PROVIDER=google
 GOOGLE_MAPS_API_KEY=your-restricted-server-key
 ```
 
-The React UI never receives this key. Administrators verify each tailoring
-vendor's pickup address, and customer delivery addresses are geocoded by the
-backend. Place IDs and refreshable coordinates are stored in PostgreSQL; route
-distance is calculated with Routes API Compute Route Matrix. A signed 10-minute
-quote prevents a second Google route request when the customer places the order.
-The configured price is charged for every started 0.1 km (100 metres).
+React never receives provider credentials. Administrators verify each vendor's
+pickup address, customer addresses are geocoded by FastAPI, and provider-qualified
+location references plus refreshable coordinates are stored in PostgreSQL. A
+signed 10-minute quote prevents a second route request when the customer places
+the order. The configured price is charged for every started 0.1 km (100 metres).
 
 ## Start the services separately
 
@@ -147,6 +223,7 @@ The repository is ready for Google Cloud Run:
    - A secret containing the production database URL.
    - A secret containing the JWT signing key.
    - A secret containing the restricted Google Maps Platform API key.
+   - A secret containing the Resend sending API key.
 
    The database URL should use the async PostgreSQL driver and URL-encode any
    special characters in the password:

@@ -56,7 +56,7 @@ const Register = () => {
     <div className="simple-auth-page">
       <div className="simple-auth-card">
         <Link className="back-link" to="/login"><ArrowLeft size={16} /> Back to sign in</Link>
-        <p className="eyebrow">Join Anu Tailoring</p>
+        <p className="eyebrow">Join Vastrivo</p>
         <h1>Create your account</h1>
         <p>Start saving designs and keep every family member’s perfect fit in one place.</p>
         <form autoComplete="off" className="form-stack" onSubmit={submit}>
@@ -108,7 +108,7 @@ const Register = () => {
         </form>
         <p className="vendor-contact">
           Are you a tailoring vendor? Vendor accounts are reviewed separately. Reach us at{" "}
-          <a href="mailto:vendors@anutailoring.com">vendors@anutailoring.com</a>.
+          <a href="mailto:vendors@vastrivo.com">vendors@vastrivo.com</a>.
         </p>
       </div>
     </div>

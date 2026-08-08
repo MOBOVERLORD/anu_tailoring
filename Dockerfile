@@ -26,11 +26,11 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY app/ ./app/
 COPY --from=frontend-build /build/frontend/dist ./frontend/dist/
 
-RUN addgroup --system anu \
-    && adduser --system --ingroup anu anu \
-    && chown -R anu:anu /app
+RUN addgroup --system vastrivo \
+    && adduser --system --ingroup vastrivo vastrivo \
+    && chown -R vastrivo:vastrivo /app
 
-USER anu
+USER vastrivo
 EXPOSE 8080
 
 CMD ["sh", "-c", "python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]

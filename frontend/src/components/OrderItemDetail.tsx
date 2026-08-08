@@ -5,6 +5,7 @@ import { ApiImage } from "@/components/ApiImage"
 import { ConfirmActionDialog } from "@/components/ConfirmActionDialog"
 import { OrderCancellationDialog } from "@/components/OrderCancellationDialog"
 import { VendorInvoiceDialog } from "@/components/VendorInvoiceDialog"
+import { MapAttribution } from "@/components/MapAttribution"
 import { api, apiBlob } from "@/lib/api"
 import type { Order, OrderComment, OrderItem, UserProfile, WorkStatus } from "@/types/api"
 
@@ -274,7 +275,7 @@ export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdate
       <section className="order-detail-grid">
         <div className="order-detail-design">
           <div className="order-detail-image">{item.design.image_url ? <ApiImage alt={item.design.title} src={item.design.image_url} /> : <Shirt size={34} />}</div>
-          <div><span className={`work-status work-${item.work_status}`}><Clock3 size={13} /> {workLabels[item.work_status]}</span><h3>{item.design.title}</h3><p>{item.design.vendor_name || "Anu Tailoring"}</p><strong>Tailoring service: ₹{item.price.toLocaleString("en-IN")}</strong>{canVendorReject && <button className="button button-secondary danger-text order-reject-button" disabled={Boolean(busy)} onClick={() => setRejecting(true)} type="button"><XCircle size={16} /> Reject order</button>}</div>
+          <div><span className={`work-status work-${item.work_status}`}><Clock3 size={13} /> {workLabels[item.work_status]}</span><h3>{item.design.title}</h3><p>{item.design.vendor_name || "Vastrivo"}</p><strong>Tailoring service: ₹{item.price.toLocaleString("en-IN")}</strong>{canVendorReject && <button className="button button-secondary danger-text order-reject-button" disabled={Boolean(busy)} onClick={() => setRejecting(true)} type="button"><XCircle size={16} /> Reject order</button>}</div>
         </div>
         <div className="order-detail-measurements">
           <div className="subsection-heading"><Ruler size={17} /><div><strong>{item.measurement_profile.profile_name}</strong><small>{item.measurement_profile.garment_type.replaceAll("_", " ")} · {item.measurement_profile.standard_size || "Custom fit"}</small></div></div>
@@ -297,7 +298,7 @@ export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdate
           <Truck size={22} />
           <div>
             <small>Platform-calculated delivery · {delivery.provider_name}</small>
-            <strong>{(delivery.distance_meters / 1000).toFixed(1)} km · ₹{delivery.delivery_cost.toLocaleString("en-IN")}</strong>
+            <strong>{(delivery.distance_meters / 1000).toFixed(1)} km · ₹{delivery.delivery_cost.toLocaleString("en-IN")}</strong><MapAttribution provider={delivery.maps_provider} />
             <p><MapPin size={14} /> {delivery.destination_address}</p>
           </div>
           <span className={`delivery-status status-${delivery.status}`}>{delivery.status.replaceAll("_", " ")}</span>
@@ -315,7 +316,7 @@ export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdate
       ) : (
         <section className={`invoice-sheet ${printTarget ? "print-target" : ""}`}>
           <header className="invoice-sheet-head"><div><p className="eyebrow">Vendor invoice</p><h3>{invoice.invoice_number}</h3><small>Order #{order.id} · {item.design.title}</small></div><div><span className={`invoice-status invoice-${invoice.status}`}>{invoice.status.replaceAll("_", " ")}</span><button className="icon-button" onClick={printInvoice} title="Print or save invoice as PDF" type="button"><Printer size={17} /></button></div></header>
-          <div className="invoice-parties"><div><small>Customer</small><strong>{order.customer.full_name}</strong><span>{order.customer.phone || order.customer.email}</span></div><div><small>Vendor</small><strong>{item.design.vendor_name || "Anu Tailoring"}</strong><span>{item.design.garment_type}</span></div></div>
+          <div className="invoice-parties"><div><small>Customer</small><strong>{order.customer.full_name}</strong><span>{order.customer.phone || order.customer.email}</span></div><div><small>Vendor</small><strong>{item.design.vendor_name || "Vastrivo"}</strong><span>{item.design.garment_type}</span></div></div>
           <div className="cloth-requirement-card"><Shirt size={18} /><div><small>Cloth requirement · {invoice.cloth_source === "customer_provided" ? "Customer provides cloth" : "Vendor supplies cloth"}</small><strong>{invoice.cloth_type}</strong><p>{invoice.cloth_requirement}</p></div></div>
           {invoice.line_items.length > 0 && <div className="invoice-line-summary"><div className="invoice-line-summary-head"><strong>Additional products and costs</strong><span>₹{invoice.additional_amount.toLocaleString("en-IN")}</span></div>{invoice.line_items.map((line) => <div key={line.id}><span><strong>{line.name}</strong>{line.description && <small>{line.description}</small>}</span><span>{line.quantity} × ₹{line.unit_price.toLocaleString("en-IN")}</span><b>₹{line.total_amount.toLocaleString("en-IN")}</b></div>)}</div>}
           <div className="invoice-costs"><span><small>Tailoring service</small><strong>₹{invoice.service_amount.toLocaleString("en-IN")}</strong></span><span><small>Cloth</small><strong>{invoice.cloth_source === "customer_provided" ? "Customer supplied" : `₹${invoice.cloth_cost.toLocaleString("en-IN")}`}</strong></span><span><small>Additional items</small><strong>₹{invoice.additional_amount.toLocaleString("en-IN")}</strong></span><span className="invoice-grand-total"><small>Vendor invoice total</small><strong>₹{invoice.total_amount.toLocaleString("en-IN")}</strong></span></div>

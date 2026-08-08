@@ -1,0 +1,5 @@
+export const mapProviderLabel = (provider: string) => provider === "openstreetmap"
+  ? "OpenStreetMap"
+  : provider === "google"
+    ? "Google Maps"
+    : "Map service"

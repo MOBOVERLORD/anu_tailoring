@@ -10,6 +10,8 @@ import VendorWorkspace from "./pages/VendorWorkspace"
 import Orders from "./pages/Orders"
 import Shop from "./pages/Shop"
 import VendorProducts from "./pages/VendorProducts"
+import ForgotPassword from "./pages/ForgotPassword"
+import ResetPassword from "./pages/ResetPassword"
 import { getAccessToken, getCurrentUser } from "./lib/api"
 import type { UserProfile } from "./types/api"
 
@@ -62,6 +64,8 @@ function App() {
           <Route index element={<RequireAuth><Home /></RequireAuth>} />
           <Route path="login" element={<Login />} />
           <Route path="register" element={<Register />} />
+          <Route path="forgot-password" element={<ForgotPassword />} />
+          <Route path="reset-password" element={<ResetPassword />} />
           <Route path="profile" element={<RequireAuth><Profile /></RequireAuth>} />
           <Route path="orders" element={<RequireAuth><Orders /></RequireAuth>} />
           <Route path="shop" element={<RequireAuth><Shop /></RequireAuth>} />

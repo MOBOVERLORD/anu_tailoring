@@ -12,8 +12,7 @@ export function Brand({ compact = false }: BrandProps) {
         <Scissors size={compact ? 17 : 20} strokeWidth={2.4} />
       </span>
       <span>
-        <strong>Anu</strong>
-        {!compact && <span> Tailoring</span>}
+        <strong>Vastrivo</strong>
       </span>
     </Link>
   )

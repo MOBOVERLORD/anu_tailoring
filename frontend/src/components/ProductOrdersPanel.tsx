@@ -3,6 +3,7 @@ import { LoaderCircle, MapPin, Package, ShoppingBag, Truck, UserRound } from "lu
 import toast from "react-hot-toast"
 import { ApiImage } from "@/components/ApiImage"
 import { AppSelect } from "@/components/ui/AppSelect"
+import { MapAttribution } from "@/components/MapAttribution"
 import { api } from "@/lib/api"
 import type { ProductOrder, ProductOrderPage, ProductOrderStatus, UserProfile } from "@/types/api"
 
@@ -52,7 +53,7 @@ export const ProductOrdersPanel = ({ profile, customerView = "in_progress", mode
             <div className="product-order-main">
               <div className="product-order-title"><div><small>Shop order #{order.id}</small><h3>{order.product.title}</h3></div><span className={`order-status status-${order.status}`}>{labels[order.status]}</span></div>
               <div className="product-order-meta"><span>{order.quantity} {order.product.unit}</span>{order.selected_size && <span>Size {order.selected_size}</span>}{order.selected_color && <span>{order.selected_color}</span>}{!isBuyer && <span><UserRound size={14} /> {order.customer.full_name}</span>}</div>
-              <div className="product-order-route"><span><MapPin size={14} /> {order.delivery_address.city}, {order.delivery_address.state}</span><span><Truck size={14} /> {(order.delivery.distance_meters / 1000).toFixed(1)} km · {order.delivery.provider_name}</span></div>
+              <div className="product-order-route"><span><MapPin size={14} /> {order.delivery_address.city}, {order.delivery_address.state}</span><span><Truck size={14} /> {(order.delivery.distance_meters / 1000).toFixed(1)} km · {order.delivery.provider_name}</span><MapAttribution provider={order.delivery.maps_provider} /></div>
             </div>
             <div className="product-order-total">
               <small>Product + delivery</small>

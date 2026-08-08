@@ -1,19 +1,24 @@
+import asyncio
 import hashlib
 import hmac
+import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
-from app.models import AuthSession, User, UserRole
+from app.models import AuthSession, PasswordResetToken, User, UserRole
 from app.schemas import (
+    PasswordResetConfirm,
+    PasswordResetRequest,
     UserCreate,
     UserLogin,
     UserResponse,
@@ -21,13 +26,19 @@ from app.schemas import (
     Token,
 )
 from app.config import settings
+from app.email_service import (
+    send_password_changed_email,
+    send_password_reset_email,
+    send_welcome_email,
+)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 pwd_context = CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
-REFRESH_COOKIE_NAME = "anu_refresh"
-UI_REQUEST_HEADER = "AnuTailoringUI"
+REFRESH_COOKIE_NAME = "vastrivo_refresh"
+LEGACY_REFRESH_COOKIE_NAME = "anu_refresh"
+UI_REQUEST_HEADER = "VastrivoUI"
 
 
 def hash_password(password: str) -> str:
@@ -136,12 +147,26 @@ def _set_refresh_cookie(response: Response, token: str) -> None:
         samesite="strict",
         path="/api/auth",
     )
+    response.delete_cookie(
+        key=LEGACY_REFRESH_COOKIE_NAME,
+        httponly=True,
+        secure=not settings.is_development,
+        samesite="strict",
+        path="/api/auth",
+    )
 
 
 def _clear_refresh_cookie(response: Response) -> None:
     response.headers["Cache-Control"] = "no-store"
     response.delete_cookie(
         key=REFRESH_COOKIE_NAME,
+        httponly=True,
+        secure=not settings.is_development,
+        samesite="strict",
+        path="/api/auth",
+    )
+    response.delete_cookie(
+        key=LEGACY_REFRESH_COOKIE_NAME,
         httponly=True,
         secure=not settings.is_development,
         samesite="strict",
@@ -213,7 +238,11 @@ require_super_admin = require_roles(UserRole.SUPER_ADMIN.value)
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def register_user(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
+async def register_user(
+    user_in: UserCreate,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(
         select(User).where(func.lower(User.email) == str(user_in.email).lower())
     )
@@ -242,7 +271,124 @@ async def register_user(user_in: UserCreate, db: AsyncSession = Depends(get_db))
             detail="Email or phone number is already registered",
         )
     await db.refresh(user)
+    if settings.EMAIL_PROVIDER.lower() != "disabled":
+        background_tasks.add_task(
+            send_welcome_email,
+            str(user.email),
+            user.full_name,
+        )
     return user
+
+
+PASSWORD_RESET_RESPONSE = (
+    "If an active account exists for that email, a password reset link will be sent."
+)
+
+
+@router.post("/password-reset/request", status_code=status.HTTP_202_ACCEPTED)
+async def request_password_reset(
+    payload: PasswordResetRequest,
+    background_tasks: BackgroundTasks,
+    x_requested_with: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    started_at = time.monotonic()
+
+    async def generic_response():
+        # Normalize the quickest paths so the public endpoint does not become a
+        # useful registered-email timing oracle.
+        await asyncio.sleep(max(0.0, 0.25 - (time.monotonic() - started_at)))
+        return {"message": PASSWORD_RESET_RESPONSE}
+
+    _require_ui_request(x_requested_with)
+    user = await db.scalar(
+        select(User).where(func.lower(User.email) == str(payload.email).lower())
+    )
+    if not user or not user.is_active:
+        return await generic_response()
+
+    now = datetime.now(timezone.utc)
+    recently_requested = await db.scalar(
+        select(PasswordResetToken.id).where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used_at.is_(None),
+            PasswordResetToken.created_at > now - timedelta(seconds=60),
+        )
+    )
+    if recently_requested:
+        return await generic_response()
+
+    raw_token = secrets.token_urlsafe(32)
+    db.add(
+        PasswordResetToken(
+            user_id=user.id,
+            token_hash=_token_hash(raw_token),
+            expires_at=now + timedelta(minutes=settings.PASSWORD_RESET_EXPIRE_MINUTES),
+        )
+    )
+    await db.commit()
+    if settings.EMAIL_PROVIDER.lower() != "disabled":
+        background_tasks.add_task(
+            send_password_reset_email,
+            str(user.email),
+            user.full_name,
+            raw_token,
+        )
+    return await generic_response()
+
+
+@router.post("/password-reset/confirm")
+async def confirm_password_reset(
+    payload: PasswordResetConfirm,
+    response: Response,
+    background_tasks: BackgroundTasks,
+    x_requested_with: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_ui_request(x_requested_with)
+    now = datetime.now(timezone.utc)
+    reset_token = await db.scalar(
+        select(PasswordResetToken)
+        .where(PasswordResetToken.token_hash == _token_hash(payload.token))
+        .with_for_update()
+    )
+    if (
+        not reset_token
+        or reset_token.used_at is not None
+        or reset_token.expires_at <= now
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This password reset link is invalid or has expired",
+        )
+
+    user = await db.get(User, reset_token.user_id)
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This password reset link is invalid or has expired",
+        )
+    user.hashed_password = hash_password(payload.new_password)
+    await db.execute(
+        update(PasswordResetToken)
+        .where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used_at.is_(None),
+        )
+        .values(used_at=now)
+    )
+    # A password reset is a security boundary: every browser/device session is
+    # invalid immediately, including a session in the browser doing the reset.
+    await db.execute(delete(AuthSession).where(AuthSession.user_id == user.id))
+    await db.commit()
+    _clear_refresh_cookie(response)
+    if settings.EMAIL_PROVIDER.lower() != "disabled":
+        background_tasks.add_task(
+            send_password_changed_email,
+            str(user.email),
+            user.full_name,
+        )
+    return {"message": "Password updated. Sign in with your new password."}
 
 
 @router.post("/login", response_model=Token)

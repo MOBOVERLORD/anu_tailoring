@@ -84,6 +84,31 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: EmailStr) -> str:
+        return str(v).strip().lower()
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(min_length=20, max_length=512)
+    new_password: str = Field(max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters long")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit")
+        if not any(c.isalpha() for c in v):
+            raise ValueError("Password must contain at least one letter")
+        return v
+
+
 class UserUpdate(BaseModel):
     full_name: str = Field(min_length=2, max_length=100)
     phone: Optional[str] = None
@@ -702,6 +727,7 @@ class DeliveryQuoteResponse(BaseModel):
     delivery_cost: float
     price_per_100m: float
     provider_name: str
+    maps_provider: str
     quote_token: str
     expires_at: datetime
 
@@ -733,6 +759,8 @@ class DeliverySettingsResponse(BaseModel):
     communication_details: Optional[str]
     is_active: bool
     maps_configured: bool
+    maps_provider: str
+    maps_configuration_message: str
     updated_at: Optional[datetime]
 
 
@@ -749,8 +777,13 @@ class DeliveryResponse(BaseModel):
     provider_email: str
     provider_phone: Optional[str]
     provider_details: Optional[str]
+    maps_provider: str
     origin_address: str
     destination_address: str
+    origin_latitude: float
+    origin_longitude: float
+    destination_latitude: float
+    destination_longitude: float
     distance_meters: int
     duration_seconds: Optional[int]
     price_per_100m: float
@@ -769,6 +802,7 @@ class OrderDeliveryResponse(BaseModel):
     id: int
     vendor_id: int
     provider_name: str
+    maps_provider: str
     destination_address: str
     distance_meters: int
     duration_seconds: Optional[int]

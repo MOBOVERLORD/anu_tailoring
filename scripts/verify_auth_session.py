@@ -48,7 +48,7 @@ async def verify() -> None:
 
         cookie = SimpleCookie()
         cookie.load(login_response.headers["set-cookie"])
-        refresh_value = cookie["anu_refresh"].value
+        refresh_value = cookie["vastrivo_refresh"].value
         current_user = await get_current_user(first_access, db)
         order_page = await list_all_orders(None, 1, 0, current_user, db)
         assert order_page["limit"] == 1
@@ -59,7 +59,7 @@ async def verify() -> None:
             {
                 "type": "http",
                 "headers": [
-                    (b"cookie", f"anu_refresh={refresh_value}".encode("utf-8"))
+                    (b"cookie", f"vastrivo_refresh={refresh_value}".encode("utf-8"))
                 ],
             }
         )

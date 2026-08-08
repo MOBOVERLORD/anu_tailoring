@@ -12,10 +12,13 @@ from sqlalchemy.orm import selectinload
 from app.auth import require_admin, require_buyer, require_super_admin
 from app.config import settings
 from app.database import get_db
-from app.google_maps import (
-    GoogleMapsError,
+from app.maps import (
+    MapProviderError,
+    configured_maps_provider,
     compute_driving_route,
     geocode_address,
+    location_reference_matches_provider,
+    maps_configuration_message,
     maps_configured,
 )
 from app.models import (
@@ -63,6 +66,7 @@ class PreparedDelivery:
     distance_meters: int
     duration_seconds: Optional[int]
     delivery_cost: float
+    maps_provider: str
 
 
 def format_delivery_address(address: DeliveryAddress) -> str:
@@ -75,8 +79,10 @@ def format_delivery_address(address: DeliveryAddress) -> str:
     ]))
 
 
-def _geocode_is_fresh(geocoded_at: Optional[datetime]) -> bool:
-    if not geocoded_at:
+def _geocode_is_fresh(
+    location_reference: Optional[str], geocoded_at: Optional[datetime]
+) -> bool:
+    if not location_reference_matches_provider(location_reference) or not geocoded_at:
         return False
     if geocoded_at.tzinfo is None:
         geocoded_at = geocoded_at.replace(tzinfo=timezone.utc)
@@ -88,7 +94,7 @@ async def geocode_customer_address(address: DeliveryAddress) -> None:
         address.google_place_id
         and address.latitude is not None
         and address.longitude is not None
-        and _geocode_is_fresh(address.geocoded_at)
+        and _geocode_is_fresh(address.google_place_id, address.geocoded_at)
     ):
         return
     result = await geocode_address(format_delivery_address(address))
@@ -101,7 +107,7 @@ async def geocode_customer_address(address: DeliveryAddress) -> None:
 async def geocode_vendor_pickup(vendor: User, pickup_address: str) -> None:
     normalized = " ".join(pickup_address.split())
     if len(normalized) < 10:
-        raise GoogleMapsError("Enter the vendor's complete pickup address")
+        raise MapProviderError("Enter the vendor's complete pickup address")
     result = await geocode_address(normalized)
     vendor.vendor_pickup_address = result.formatted_address
     vendor.vendor_pickup_place_id = result.place_id
@@ -112,14 +118,16 @@ async def geocode_vendor_pickup(vendor: User, pickup_address: str) -> None:
 
 async def _ensure_vendor_pickup(vendor: User) -> None:
     if not vendor.vendor_pickup_address:
-        raise GoogleMapsError(
+        raise MapProviderError(
             f"{vendor.full_name} does not have an administrator-verified pickup address"
         )
     if (
         vendor.vendor_pickup_place_id
         and vendor.vendor_pickup_latitude is not None
         and vendor.vendor_pickup_longitude is not None
-        and _geocode_is_fresh(vendor.vendor_pickup_geocoded_at)
+        and _geocode_is_fresh(
+            vendor.vendor_pickup_place_id, vendor.vendor_pickup_geocoded_at
+        )
     ):
         return
     await geocode_vendor_pickup(vendor, vendor.vendor_pickup_address)
@@ -137,7 +145,7 @@ async def active_delivery_settings(db: AsyncSession) -> DeliverySettings:
     if not maps_configured():
         raise HTTPException(
             status_code=503,
-            detail="Google Maps delivery calculation is not configured on the server",
+            detail=maps_configuration_message(),
         )
     return delivery_settings
 
@@ -189,9 +197,10 @@ async def prepare_delivery_quotes(
                 delivery_cost=calculate_delivery_cost(
                     route.distance_meters, delivery_settings.price_per_100m
                 ),
+                maps_provider=configured_maps_provider(),
             ))
         return prepared
-    except GoogleMapsError as exc:
+    except MapProviderError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
@@ -203,7 +212,7 @@ def _create_quote_token(
     payload = {
         "type": "delivery_quote",
         "iss": settings.JWT_ISSUER,
-        "aud": "anu-tailoring-delivery",
+        "aud": "vastrivo-delivery",
         "exp": expires_at,
         "vendor_id": quote.vendor.id,
         "address_id": address_id,
@@ -214,6 +223,7 @@ def _create_quote_token(
         "delivery_cost": quote.delivery_cost,
         "price_per_100m": quote.settings.price_per_100m,
         "provider_name": quote.settings.provider_name,
+        "maps_provider": quote.maps_provider,
     }
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM), expires_at
 
@@ -229,7 +239,7 @@ def _prepared_delivery_from_token(
             token,
             settings.SECRET_KEY,
             algorithms=[settings.ALGORITHM],
-            audience="anu-tailoring-delivery",
+            audience="vastrivo-delivery",
             issuer=settings.JWT_ISSUER,
         )
         valid = (
@@ -240,6 +250,7 @@ def _prepared_delivery_from_token(
             and payload.get("destination_place_id") == address.google_place_id
             and float(payload.get("price_per_100m")) == delivery_settings.price_per_100m
             and payload.get("provider_name") == delivery_settings.provider_name
+            and payload.get("maps_provider") == configured_maps_provider()
         )
         if not valid:
             raise ValueError("Quote context changed")
@@ -269,6 +280,7 @@ def _prepared_delivery_from_token(
         distance_meters=distance_meters,
         duration_seconds=duration_seconds,
         delivery_cost=delivery_cost,
+        maps_provider=str(payload["maps_provider"]),
     )
 
 
@@ -300,6 +312,7 @@ def delivery_from_prepared(
         duration_seconds=quote.duration_seconds,
         price_per_100m=quote.settings.price_per_100m,
         delivery_cost=quote.delivery_cost,
+        maps_provider=quote.maps_provider,
     )
 
 
@@ -318,8 +331,13 @@ def serialize_delivery(delivery: Delivery) -> dict:
         "provider_email": delivery.provider_email,
         "provider_phone": delivery.provider_phone,
         "provider_details": delivery.provider_details,
+        "maps_provider": delivery.maps_provider,
         "origin_address": delivery.origin_address,
         "destination_address": delivery.destination_address,
+        "origin_latitude": delivery.origin_latitude,
+        "origin_longitude": delivery.origin_longitude,
+        "destination_latitude": delivery.destination_latitude,
+        "destination_longitude": delivery.destination_longitude,
         "distance_meters": delivery.distance_meters,
         "duration_seconds": delivery.duration_seconds,
         "price_per_100m": delivery.price_per_100m,
@@ -341,6 +359,7 @@ def serialize_order_delivery(delivery: Delivery) -> dict:
         "id": delivery.id,
         "vendor_id": delivery.vendor_id,
         "provider_name": delivery.provider_name,
+        "maps_provider": delivery.maps_provider,
         "destination_address": delivery.destination_address,
         "distance_meters": delivery.distance_meters,
         "duration_seconds": delivery.duration_seconds,
@@ -405,6 +424,7 @@ async def quote_delivery(
         "delivery_cost": quote.delivery_cost,
         "price_per_100m": quote.settings.price_per_100m,
         "provider_name": quote.settings.provider_name,
+        "maps_provider": quote.maps_provider,
         "quote_token": quote_token,
         "expires_at": expires_at,
     }
@@ -419,6 +439,8 @@ def _settings_response(delivery_settings: Optional[DeliverySettings]) -> dict:
         "communication_details": delivery_settings.communication_details if delivery_settings else None,
         "is_active": delivery_settings.is_active if delivery_settings else False,
         "maps_configured": maps_configured(),
+        "maps_provider": configured_maps_provider(),
+        "maps_configuration_message": maps_configuration_message(),
         "updated_at": delivery_settings.updated_at if delivery_settings else None,
     }
 
@@ -440,7 +462,7 @@ async def update_delivery_settings(
     if payload.is_active and not maps_configured():
         raise HTTPException(
             status_code=409,
-            detail="Add GOOGLE_MAPS_API_KEY to the backend before activating delivery",
+            detail=maps_configuration_message(),
         )
     delivery_settings = await db.get(DeliverySettings, 1, with_for_update=True)
     if not delivery_settings:

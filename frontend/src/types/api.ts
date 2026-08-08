@@ -246,6 +246,7 @@ export interface DeliveryQuote {
   delivery_cost: number
   price_per_100m: number
   provider_name: string
+  maps_provider: string
   quote_token: string
   expires_at: string
 }
@@ -258,6 +259,8 @@ export interface DeliverySettings {
   communication_details: string | null
   is_active: boolean
   maps_configured: boolean
+  maps_provider: string
+  maps_configuration_message: string
   updated_at: string | null
 }
 
@@ -274,8 +277,13 @@ export interface DeliveryRecord {
   provider_email: string
   provider_phone: string | null
   provider_details: string | null
+  maps_provider: string
   origin_address: string
   destination_address: string
+  origin_latitude: number
+  origin_longitude: number
+  destination_latitude: number
+  destination_longitude: number
   distance_meters: number
   duration_seconds: number | null
   price_per_100m: number
@@ -294,6 +302,7 @@ export interface OrderDelivery {
   id: number
   vendor_id: number
   provider_name: string
+  maps_provider: string
   destination_address: string
   distance_meters: number
   duration_seconds: number | null

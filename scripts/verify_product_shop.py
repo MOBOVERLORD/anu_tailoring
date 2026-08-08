@@ -9,7 +9,7 @@ from app.main import app
 def main() -> None:
     assert settings.ADMIN_EMAIL and settings.ADMIN_PASSWORD, "Admin credentials are required"
     with TestClient(app) as client:
-        request_headers = {"X-Requested-With": "AnuTailoringUI"}
+        request_headers = {"X-Requested-With": "VastrivoUI"}
         login = client.post(
             "/api/auth/login",
             json={"email": str(settings.ADMIN_EMAIL), "password": settings.ADMIN_PASSWORD},

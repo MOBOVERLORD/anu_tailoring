@@ -1,18 +1,20 @@
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTasks
 from sqlalchemy import delete, func, select
 from sqlalchemy import text
 
 from app.database import engine, Base, AsyncSessionLocal
-from app.models import AuthSession, MeasurementCategory, User, UserRole
+from app.models import AuthSession, MeasurementCategory, PasswordResetToken, User, UserRole
 from app.measurement_catalog import default_category_rows
 from app.config import settings
 from app.auth import hash_password
+from app.email_service import deliver_pending_notification_emails
 from app import (
     addresses,
     admin,
@@ -97,6 +99,10 @@ async def init_db_and_seed_admin():
         ))
         await conn.execute(text(
             "ALTER TABLE delivery_addresses ADD COLUMN IF NOT EXISTS geocoded_at TIMESTAMPTZ"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS maps_provider "
+            "VARCHAR(30) NOT NULL DEFAULT 'google'"
         ))
         await conn.execute(text(
             "ALTER TABLE measurement_profiles "
@@ -297,6 +303,12 @@ async def init_db_and_seed_admin():
                 AuthSession.expires_at <= datetime.now(timezone.utc)
             )
         )
+        await db.execute(
+            delete(PasswordResetToken).where(
+                PasswordResetToken.expires_at
+                <= datetime.now(timezone.utc) - timedelta(days=1)
+            )
+        )
         await db.commit()
         category_count = await db.scalar(select(func.count(MeasurementCategory.id)))
         if not category_count:
@@ -362,6 +374,18 @@ async def security_headers(request: Request, call_next):
             "connect-src 'self'; object-src 'none'; base-uri 'self'; "
             "frame-ancestors 'none'; form-action 'self'",
         )
+    if (
+        request.method in {"POST", "PUT", "PATCH", "DELETE"}
+        and response.status_code < 400
+        and settings.EMAIL_NOTIFICATIONS_ENABLED
+    ):
+        # Starlette runs these after the response is sent but before the ASGI
+        # request finishes, which works with Cloud Run's request-based CPU.
+        tasks = BackgroundTasks()
+        if response.background is not None:
+            tasks.tasks.append(response.background)
+        tasks.add_task(deliver_pending_notification_emails)
+        response.background = tasks
     return response
 
 app.include_router(auth.router)

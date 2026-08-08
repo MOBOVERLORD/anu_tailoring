@@ -37,7 +37,7 @@ const Login = () => {
 
   return (
     <div className="auth-page">
-      <section className="auth-story" aria-label="Anu Tailoring">
+      <section className="auth-story" aria-label="Vastrivo">
         <div className="story-text">
           <p className="eyebrow light"><Sparkles size={15} /> Your fit, remembered</p>
           <h1>Clothes designed around <em>you.</em></h1>
@@ -86,6 +86,7 @@ const Login = () => {
             <div className="field">
               <div className="label-row">
                 <label htmlFor="password">Password</label>
+                <Link to="/forgot-password">Forgot password?</Link>
               </div>
               <div className="input-with-icon">
                 <LockKeyhole size={18} />
@@ -115,7 +116,7 @@ const Login = () => {
             </button>
           </form>
           <p className="auth-switch">
-            New to Anu Tailoring? <Link to="/register">Create an account</Link>
+            New to Vastrivo? <Link to="/register">Create an account</Link>
           </p>
           <div className="secure-note"><LockKeyhole size={14} /> Your account details stay private.</div>
         </div>

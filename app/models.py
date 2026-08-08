@@ -98,6 +98,9 @@ class User(Base):
     auth_sessions: Mapped[List["AuthSession"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    password_reset_tokens: Mapped[List["PasswordResetToken"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class AuthSession(Base):
@@ -118,6 +121,25 @@ class AuthSession(Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="auth_sessions")
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    # Only a SHA-256 digest is persisted. The usable token exists solely in
+    # the email link and can therefore be used only by its recipient.
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    used_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="password_reset_tokens")
 
 
 class MeasurementProfile(Base):
@@ -356,6 +378,35 @@ class Notification(Base):
     user: Mapped["User"] = relationship(back_populates="notifications")
 
 
+class EmailOutbox(Base):
+    """Retryable transactional email created with its source DB transaction."""
+
+    __tablename__ = "email_outbox"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    recipient_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    subject: Mapped[str] = mapped_column(String(200))
+    text_body: Mapped[str] = mapped_column(Text)
+    html_body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), default="pending", server_default="pending", index=True
+    )
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+    last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    sent_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    user: Mapped[Optional["User"]] = relationship(foreign_keys=[user_id])
+
+
 class Order(Base):
     __tablename__ = "orders"
 
@@ -581,6 +632,9 @@ class Delivery(Base):
     provider_email: Mapped[str] = mapped_column(String(255))
     provider_phone: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     provider_details: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    maps_provider: Mapped[str] = mapped_column(
+        String(30), default="openstreetmap", server_default="openstreetmap"
+    )
     origin_address: Mapped[str] = mapped_column(String(500))
     origin_place_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     origin_latitude: Mapped[float] = mapped_column(Float)

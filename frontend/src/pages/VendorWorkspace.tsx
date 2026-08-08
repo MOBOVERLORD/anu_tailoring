@@ -229,7 +229,7 @@ const VendorWorkspace = () => {
         <div>
           <p className="eyebrow"><Sparkles size={15} /> Vendor workspace</p>
           <h1>Manage your collection</h1>
-          <p>Create a design, add 1–10 images, then send it to Anu Tailoring for approval.</p>
+          <p>Create a design, add 1–10 images, then send it to Vastrivo for approval.</p>
         </div>
         <div className="workspace-heading-actions"><button className="button button-primary" onClick={openCreate} type="button"><Plus size={18} /> New design</button></div>
       </section>

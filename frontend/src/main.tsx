@@ -6,9 +6,16 @@ import './index.css'
 import App from './App.tsx'
 import { ThemeProvider } from './context/ThemeContext.tsx'
 
+const themeStorageKey = 'vastrivo-theme'
+const legacyTheme = localStorage.getItem('anu-tailoring-theme')
+if (!localStorage.getItem(themeStorageKey) && legacyTheme) {
+  localStorage.setItem(themeStorageKey, legacyTheme)
+  localStorage.removeItem('anu-tailoring-theme')
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ThemeProvider defaultTheme="system" storageKey="anu-tailoring-theme">
+    <ThemeProvider defaultTheme="system" storageKey={themeStorageKey}>
       <App />
     </ThemeProvider>
   </StrictMode>,
