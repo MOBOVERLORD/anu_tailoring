@@ -7,13 +7,15 @@ from sqlalchemy import select, update
 
 from app.database import get_db
 from app.config import settings
-from app.models import DeliveryAddress, User
+from app.models import DeliveryAddress, User, UserRole
 from app.schemas import (
     BrowserLocationRequest,
     DeliveryAddressCreate,
     DeliveryAddressUpdate,
     DeliveryAddressResponse,
     ResolvedLocationResponse,
+    UserResponse,
+    VendorPickupUpdate,
 )
 from app.auth import get_current_user
 from app.deliveries import geocode_customer_address, geocode_customer_coordinates
@@ -47,13 +49,12 @@ def _create_location_token(user_id: int, location: BrowserLocationRequest, resul
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-def _apply_verified_location(
-    address: DeliveryAddress,
+def _verified_location_payload(
     token: str,
     user_id: int,
     latitude: float,
     longitude: float,
-) -> None:
+) -> dict:
     try:
         payload = jwt.decode(
             token,
@@ -72,14 +73,32 @@ def _apply_verified_location(
         )
         if not valid:
             raise ValueError("Location context changed")
-        provider_postal_code = payload.get("postal_code")
-        if provider_postal_code and address.postal_code != provider_postal_code:
-            raise ValueError("PIN code changed")
     except (JWTError, TypeError, ValueError) as exc:
         raise HTTPException(
             status_code=422,
             detail="The captured location expired or the address changed. Tap Update location and try again.",
         ) from exc
+
+    return payload
+
+
+def _apply_verified_location(
+    address: DeliveryAddress,
+    token: str,
+    user_id: int,
+    latitude: float,
+    longitude: float,
+) -> None:
+    payload = _verified_location_payload(
+        token, user_id, latitude, longitude
+    )
+
+    provider_postal_code = payload.get("postal_code")
+    if provider_postal_code and address.postal_code != provider_postal_code:
+        raise HTTPException(
+            status_code=422,
+            detail="The captured location expired or the address changed. Tap Update location and try again.",
+        )
 
     address.google_place_id = payload["place_id"]
     address.latitude = latitude
@@ -126,6 +145,51 @@ async def resolve_browser_location(
         country=result.country,
         location_token=_create_location_token(current_user.id, location, result),
     )
+
+
+@router.put("/vendor-pickup", response_model=UserResponse)
+async def update_my_vendor_pickup(
+    pickup: VendorPickupUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role != UserRole.VENDOR.value:
+        raise HTTPException(
+            status_code=403,
+            detail="Only vendor accounts can configure a workshop pickup location",
+        )
+
+    if pickup.location_token:
+        verified = _verified_location_payload(
+            pickup.location_token,
+            current_user.id,
+            pickup.pickup_latitude,
+            pickup.pickup_longitude,
+        )
+        place_id = verified["place_id"]
+    else:
+        location_unchanged = (
+            current_user.vendor_pickup_place_id
+            and current_user.vendor_pickup_latitude is not None
+            and current_user.vendor_pickup_longitude is not None
+            and abs(current_user.vendor_pickup_latitude - pickup.pickup_latitude) < 0.0000001
+            and abs(current_user.vendor_pickup_longitude - pickup.pickup_longitude) < 0.0000001
+        )
+        if not location_unchanged:
+            raise HTTPException(
+                status_code=422,
+                detail="Choose the workshop location on the map or use your current location first",
+            )
+        place_id = current_user.vendor_pickup_place_id
+
+    current_user.vendor_pickup_address = pickup.pickup_address
+    current_user.vendor_pickup_place_id = place_id
+    current_user.vendor_pickup_latitude = pickup.pickup_latitude
+    current_user.vendor_pickup_longitude = pickup.pickup_longitude
+    current_user.vendor_pickup_geocoded_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
 
 
 async def _clear_existing_default(user_id: int, db: AsyncSession):

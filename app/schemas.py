@@ -130,9 +130,6 @@ class UserUpdate(BaseModel):
 
 
 class AdminUserUpdate(UserUpdate):
-    vendor_pickup_address: Optional[str] = Field(default=None, max_length=500)
-    vendor_pickup_latitude: Optional[float] = Field(default=None, ge=-90, le=90)
-    vendor_pickup_longitude: Optional[float] = Field(default=None, ge=-180, le=180)
     role: Optional[str] = None
 
     @field_validator("role")
@@ -145,11 +142,18 @@ class AdminUserUpdate(UserUpdate):
             raise ValueError("Role must be customer, vendor, or admin")
         return normalized
 
-    @model_validator(mode="after")
-    def pickup_coordinates_are_a_pair(self):
-        if (self.vendor_pickup_latitude is None) != (self.vendor_pickup_longitude is None):
-            raise ValueError("Pickup latitude and longitude must be provided together")
-        return self
+
+
+class VendorPickupUpdate(BaseModel):
+    pickup_address: str = Field(min_length=10, max_length=500)
+    pickup_latitude: float = Field(ge=-90, le=90)
+    pickup_longitude: float = Field(ge=-180, le=180)
+    location_token: Optional[str] = Field(default=None, min_length=20, max_length=4096)
+
+    @field_validator("pickup_address")
+    @classmethod
+    def normalize_pickup_address(cls, v: str) -> str:
+        return " ".join(v.split())
 
 
 class VendorCreate(UserCreate):

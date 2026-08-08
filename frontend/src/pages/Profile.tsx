@@ -13,6 +13,7 @@ import {
   Ruler,
   Save,
   Star,
+  Store,
   Trash2,
   UserRound,
 } from "lucide-react"
@@ -34,12 +35,19 @@ import type {
   UserProfile,
 } from "@/types/api"
 
-type Section = "details" | "measurements" | "addresses" | "activity"
+type Section = "details" | "pickup" | "measurements" | "addresses" | "activity"
 type Gender = "women" | "men" | "unisex" | "kids"
 
 interface GarmentOption {
   value: string
   label: string
+}
+
+interface VendorPickupDraft {
+  pickup_address: string
+  pickup_latitude: number | null
+  pickup_longitude: number | null
+  location_token?: string
 }
 
 const GARMENTS: Record<"women" | "men", GarmentOption[]> = {
@@ -386,6 +394,11 @@ const Profile = () => {
   const [section, setSection] = useState<Section>("details")
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [profileDraft, setProfileDraft] = useState({ full_name: "", phone: "", location: "" })
+  const [vendorPickupDraft, setVendorPickupDraft] = useState<VendorPickupDraft>({
+    pickup_address: "",
+    pickup_latitude: null,
+    pickup_longitude: null,
+  })
   const [measurements, setMeasurements] = useState<MeasurementProfile[]>([])
   const [categories, setCategories] = useState<MeasurementCategory[]>([])
   const [addresses, setAddresses] = useState<DeliveryAddress[]>([])
@@ -395,6 +408,7 @@ const Profile = () => {
   const [measurementDialog, setMeasurementDialog] = useState<MeasurementProfile | "new" | null>(null)
   const [addressDialog, setAddressDialog] = useState<DeliveryAddress | "new" | null>(null)
   const [savingProfile, setSavingProfile] = useState(false)
+  const [savingVendorPickup, setSavingVendorPickup] = useState(false)
   const [loading, setLoading] = useState(true)
   const profileContent = useRef<HTMLElement>(null)
   const navigate = useNavigate()
@@ -402,7 +416,7 @@ const Profile = () => {
   useEffect(() => {
     const requestedSection = searchParams.get("section")
     setSection(
-      requestedSection === "measurements" || requestedSection === "addresses" || requestedSection === "activity"
+      requestedSection === "pickup" || requestedSection === "measurements" || requestedSection === "addresses" || requestedSection === "activity"
         ? requestedSection
         : "details"
     )
@@ -421,6 +435,11 @@ const Profile = () => {
           full_name: user.full_name,
           phone: user.phone || "",
           location: user.location || "",
+        })
+        setVendorPickupDraft({
+          pickup_address: user.vendor_pickup_address || "",
+          pickup_latitude: user.vendor_pickup_latitude,
+          pickup_longitude: user.vendor_pickup_longitude,
         })
         setMeasurements(userMeasurements)
         setAddresses(userAddresses)
@@ -529,6 +548,33 @@ const Profile = () => {
     }
   }
 
+  const saveVendorPickup = async (event: FormEvent) => {
+    event.preventDefault()
+    if (vendorPickupDraft.pickup_latitude == null || vendorPickupDraft.pickup_longitude == null) {
+      toast.error("Choose the workshop location on the map or use your current location first")
+      return
+    }
+    setSavingVendorPickup(true)
+    try {
+      const updated = await api<UserProfile>("/api/addresses/vendor-pickup", {
+        method: "PUT",
+        body: JSON.stringify(vendorPickupDraft),
+      })
+      setProfile(updated)
+      setVendorPickupDraft({
+        pickup_address: updated.vendor_pickup_address || "",
+        pickup_latitude: updated.vendor_pickup_latitude,
+        pickup_longitude: updated.vendor_pickup_longitude,
+      })
+      updateCurrentUserCache(updated)
+      toast.success("Workshop pickup location saved")
+    } catch (error) {
+      toast.error((error as Error).message)
+    } finally {
+      setSavingVendorPickup(false)
+    }
+  }
+
   const saveMeasurement = async (value: MeasurementProfileInput) => {
     try {
       if (measurementDialog && measurementDialog !== "new") {
@@ -609,6 +655,13 @@ const Profile = () => {
 
   const navItems: Array<{ value: Section; label: string; mobileLabel: string; detail: string; icon: typeof UserRound }> = [
     { value: "details", label: "Personal details", mobileLabel: "Details", detail: "Name, phone & location", icon: UserRound },
+    ...(profile.role === "vendor" ? [{
+      value: "pickup" as Section,
+      label: "Workshop & pickup",
+      mobileLabel: "Pickup",
+      detail: profile.vendor_pickup_latitude == null ? "Location setup required" : "Delivery origin saved",
+      icon: Store,
+    }] : []),
     { value: "measurements", label: "Measurements", mobileLabel: "Fits", detail: `${measurements.length} saved profile${measurements.length === 1 ? "" : "s"}`, icon: Ruler },
     { value: "addresses", label: "Delivery addresses", mobileLabel: "Addresses", detail: `${addresses.length} saved address${addresses.length === 1 ? "" : "es"}`, icon: Home },
     { value: "activity", label: "Activity log", mobileLabel: "Activity", detail: "Notifications & updates", icon: History },
@@ -678,6 +731,55 @@ const Profile = () => {
                 </div>
                 <div className="form-actions">
                   <button className="button button-primary" disabled={savingProfile} type="submit"><Save size={17} /> {savingProfile ? "Saving…" : "Save changes"}</button>
+                </div>
+              </form>
+            </>
+          )}
+
+          {section === "pickup" && profile.role === "vendor" && (
+            <>
+              <div className="section-heading">
+                <div><p className="section-kicker">Vendor operations</p><h2>Workshop & pickup location</h2><p>This is where tailoring jobs and product deliveries start. Set it yourself from the workshop or choose the exact point on the map.</p></div>
+              </div>
+              <form className="profile-form" onSubmit={saveVendorPickup}>
+                {profile.vendor_pickup_latitude == null && (
+                  <div className="permission-note"><MapPin size={18} /><p><strong>Pickup setup required</strong><br />Pin the workshop before accepting orders that require delivery pricing.</p></div>
+                )}
+                <LocationCapture
+                  current={vendorPickupDraft.pickup_latitude != null && vendorPickupDraft.pickup_longitude != null ? {
+                    latitude: vendorPickupDraft.pickup_latitude,
+                    longitude: vendorPickupDraft.pickup_longitude,
+                  } : null}
+                  onResolved={(location) => setVendorPickupDraft((current) => ({
+                    ...current,
+                    pickup_address: location.formatted_address,
+                    pickup_latitude: location.latitude,
+                    pickup_longitude: location.longitude,
+                    location_token: location.location_token,
+                  }))}
+                />
+                <div className="field">
+                  <label htmlFor="vendor-pickup-address">Workshop address and pickup instructions</label>
+                  <textarea
+                    id="vendor-pickup-address"
+                    maxLength={500}
+                    minLength={10}
+                    onChange={(event) => setVendorPickupDraft((current) => ({ ...current, pickup_address: event.target.value }))}
+                    placeholder="Select the location above, then add shop number, floor, landmark or pickup instructions"
+                    required
+                    rows={3}
+                    value={vendorPickupDraft.pickup_address}
+                  />
+                  <small>You can add building details after selecting the map point without changing the saved coordinates.</small>
+                </div>
+                <div className="form-actions">
+                  <button
+                    className="button button-primary"
+                    disabled={savingVendorPickup || vendorPickupDraft.pickup_latitude == null || vendorPickupDraft.pickup_longitude == null || vendorPickupDraft.pickup_address.trim().length < 10}
+                    type="submit"
+                  >
+                    <Save size={17} /> {savingVendorPickup ? "Saving…" : "Save pickup location"}
+                  </button>
                 </div>
               </form>
             </>

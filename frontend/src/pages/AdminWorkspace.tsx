@@ -4,6 +4,7 @@ import {
   Edit3,
   ImageIcon,
   LoaderCircle,
+  MapPin,
   Maximize2,
   Ruler,
   Search,
@@ -56,9 +57,6 @@ interface ManagedUserFormState {
   full_name: string
   phone: string
   location: string
-  vendor_pickup_address: string
-  vendor_pickup_latitude: number | null
-  vendor_pickup_longitude: number | null
   role: ManageableRole
 }
 
@@ -93,9 +91,6 @@ const AdminWorkspace = () => {
     full_name: "",
     phone: "",
     location: "",
-    vendor_pickup_address: "",
-    vendor_pickup_latitude: null,
-    vendor_pickup_longitude: null,
     role: "customer",
   })
   const [lightbox, setLightbox] = useState<{ images: DesignImage[]; index: number } | null>(null)
@@ -210,9 +205,6 @@ const AdminWorkspace = () => {
       full_name: user.full_name,
       phone: user.phone || "",
       location: user.location || "",
-      vendor_pickup_address: user.vendor_pickup_address || "",
-      vendor_pickup_latitude: user.vendor_pickup_latitude,
-      vendor_pickup_longitude: user.vendor_pickup_longitude,
       role: user.role as ManageableRole,
     })
   }
@@ -434,18 +426,9 @@ const AdminWorkspace = () => {
             <div className="field"><label htmlFor="managed-name">Name</label><input id="managed-name" maxLength={100} minLength={2} required value={userForm.full_name} onChange={(event) => setUserForm({ ...userForm, full_name: event.target.value })} /></div>
             <div className="field"><label htmlFor="managed-phone">Phone</label><input id="managed-phone" maxLength={20} type="tel" value={userForm.phone} onChange={(event) => setUserForm({ ...userForm, phone: event.target.value })} /></div>
             <div className="field"><label htmlFor="managed-location">Location</label><input id="managed-location" maxLength={150} value={userForm.location} onChange={(event) => setUserForm({ ...userForm, location: event.target.value })} /></div>
-            {userForm.role === "vendor" && <>
-              <div className="field"><label htmlFor="managed-pickup">Verified delivery pickup address</label><textarea id="managed-pickup" maxLength={500} minLength={10} onChange={(event) => setUserForm({ ...userForm, vendor_pickup_address: event.target.value, vendor_pickup_latitude: null, vendor_pickup_longitude: null })} required rows={3} value={userForm.vendor_pickup_address} /><small>Changing the address clears the saved pin. Capture it again before saving.</small></div>
-              <LocationCapture
-                current={userForm.vendor_pickup_latitude != null && userForm.vendor_pickup_longitude != null ? { latitude: userForm.vendor_pickup_latitude, longitude: userForm.vendor_pickup_longitude } : null}
-                onResolved={(location) => setUserForm((current) => ({
-                  ...current,
-                  vendor_pickup_address: location.formatted_address,
-                  vendor_pickup_latitude: location.latitude,
-                  vendor_pickup_longitude: location.longitude,
-                }))}
-              />
-            </>}
+            {userForm.role === "vendor" && editingUser.role !== "vendor" && (
+              <div className="permission-note"><MapPin size={18} /><p><strong>Pickup location is completed by the vendor</strong><br />After signing in again, this user can pin their workshop address from Profile & settings.</p></div>
+            )}
             <div className="dialog-actions"><button className="button button-quiet" onClick={() => setEditingUser(null)} type="button">Cancel</button><button className="button button-primary" disabled={busyId === editingUser.id} type="submit">Save changes</button></div>
           </form>
         </Dialog>

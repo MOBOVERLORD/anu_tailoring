@@ -41,7 +41,7 @@ export const LocationCapture = ({ compact = false, current, onResolved }: Locati
       })
       setResolved(location)
       onResolved(location)
-      toast.success("Delivery location selected")
+      toast.success("Location selected")
     } catch (error) {
       toast.error((error as Error).message)
     } finally {

@@ -59,8 +59,8 @@ class User(Base):
         String(20), nullable=True, unique=True, index=True
     )
     location: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
-    # Delivery pricing uses an administrator-verified business pickup point,
-    # separate from the vendor-editable profile location.
+    # Delivery pricing uses a vendor-selected, provider-verified business pickup
+    # point, separate from the free-form profile location.
     vendor_pickup_address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     vendor_pickup_place_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     vendor_pickup_latitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

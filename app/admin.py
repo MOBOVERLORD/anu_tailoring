@@ -256,42 +256,6 @@ async def update_managed_user(
 
     requested_role = payload.role or user.role
     previous_role = user.role
-    pickup_coordinates_supplied = (
-        payload.vendor_pickup_latitude is not None
-        and payload.vendor_pickup_longitude is not None
-    )
-    pickup_address_changed = (
-        payload.vendor_pickup_address is not None
-        and payload.vendor_pickup_address.strip() != (user.vendor_pickup_address or "")
-    )
-    if requested_role == UserRole.VENDOR.value and (
-        pickup_coordinates_supplied or pickup_address_changed
-    ):
-        try:
-            pickup_address = payload.vendor_pickup_address or user.vendor_pickup_address or ""
-            if pickup_coordinates_supplied:
-                await geocode_vendor_pickup_coordinates(
-                    user,
-                    pickup_address,
-                    payload.vendor_pickup_latitude,
-                    payload.vendor_pickup_longitude,
-                )
-            else:
-                await geocode_vendor_pickup(user, pickup_address)
-        except MapProviderError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-    if requested_role == UserRole.VENDOR.value and not (
-        user.vendor_pickup_address
-        and user.vendor_pickup_place_id
-        and user.vendor_pickup_latitude is not None
-        and user.vendor_pickup_longitude is not None
-    ):
-        raise HTTPException(
-            status_code=422,
-            detail="A vendor role requires a verified pickup address and precise location",
-        )
-
     user.full_name = payload.full_name
     user.phone = payload.phone
     user.location = payload.location.strip() if payload.location else None
@@ -302,15 +266,20 @@ async def update_managed_user(
             .where(AuthSession.user_id == user.id, AuthSession.revoked_at.is_(None))
             .values(revoked_at=datetime.now(timezone.utc))
         )
+        became_vendor = requested_role == UserRole.VENDOR.value
         db.add(Notification(
             user_id=user.id,
             title="Account role updated",
             message=(
                 f"Your Vastrivo role changed from {previous_role.replace('_', ' ')} "
                 f"to {requested_role.replace('_', ' ')}."
+                + (
+                    " Add your workshop pickup location in Profile before accepting delivery orders."
+                    if became_vendor else ""
+                )
             ),
             notification_type="account_role_changed",
-            link="/profile?section=activity",
+            link="/profile?section=pickup" if became_vendor else "/profile?section=activity",
         ))
     try:
         await db.commit()

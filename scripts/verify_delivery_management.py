@@ -9,16 +9,23 @@ import httpx
 from sqlalchemy import select
 
 from app.database import AsyncSessionLocal, engine
-from app.addresses import _apply_verified_location, _create_location_token
+from app.admin import update_managed_user
+from app.addresses import (
+    _apply_verified_location,
+    _create_location_token,
+    update_my_vendor_pickup,
+)
 from app.deliveries import calculate_delivery_cost
 from app.main import app, init_db_and_seed_admin
 from app import maps
 from app.config import settings as app_settings
-from app.models import DeliveryAddress, DeliverySettings
+from app.models import DeliveryAddress, DeliverySettings, UserRole
 from app.schemas import (
+    AdminUserUpdate,
     BrowserLocationRequest,
     DeliverySettingsUpdate,
     DeliveryTrackingUpdate,
+    VendorPickupUpdate,
     VendorInvoiceUpsert,
 )
 
@@ -61,6 +68,86 @@ async def main() -> None:
     assert address.latitude == browser_location.latitude
     assert address.longitude == browser_location.longitude
     assert address.google_place_id == resolved.place_id
+
+    # Role assignment must not contain or require map/address data. Vendors own
+    # their pickup setup after promotion and reuse the signed location proof.
+    role_update = AdminUserUpdate(
+        full_name="New Vendor",
+        phone=None,
+        location=None,
+        role="vendor",
+    )
+    assert role_update.role == UserRole.VENDOR.value
+    assert "vendor_pickup_address" not in AdminUserUpdate.model_fields
+
+    class RoleDb:
+        def __init__(self, managed_user) -> None:
+            self.managed_user = managed_user
+            self.notifications = []
+
+        async def scalar(self, _statement):
+            return self.managed_user
+
+        async def execute(self, _statement):
+            return None
+
+        def add(self, value) -> None:
+            self.notifications.append(value)
+
+        async def commit(self) -> None:
+            pass
+
+        async def rollback(self) -> None:
+            pass
+
+        async def refresh(self, _value) -> None:
+            pass
+
+    promoted_user = SimpleNamespace(
+        id=77,
+        full_name="Promoted User",
+        phone=None,
+        location=None,
+        role=UserRole.CUSTOMER.value,
+    )
+    role_db = RoleDb(promoted_user)
+    await update_managed_user(
+        promoted_user.id,
+        role_update,
+        _super_admin=SimpleNamespace(id=1),
+        db=role_db,
+    )
+    assert promoted_user.role == UserRole.VENDOR.value
+    assert len(role_db.notifications) == 1
+
+    class FakeDb:
+        async def commit(self) -> None:
+            pass
+
+        async def refresh(self, _value) -> None:
+            pass
+
+    vendor = SimpleNamespace(
+        id=42,
+        role=UserRole.VENDOR.value,
+        vendor_pickup_address=None,
+        vendor_pickup_place_id=None,
+        vendor_pickup_latitude=None,
+        vendor_pickup_longitude=None,
+        vendor_pickup_geocoded_at=None,
+    )
+    await update_my_vendor_pickup(
+        VendorPickupUpdate(
+            pickup_address="Shop 11, Road No 1, Nizampet, Telangana 500090",
+            pickup_latitude=browser_location.latitude,
+            pickup_longitude=browser_location.longitude,
+            location_token=location_token,
+        ),
+        current_user=vendor,
+        db=FakeDb(),
+    )
+    assert vendor.vendor_pickup_place_id == resolved.place_id
+    assert vendor.vendor_pickup_latitude == browser_location.latitude
 
     settings = DeliverySettingsUpdate(
         price_per_100m=Decimal("2.50"),
@@ -156,6 +243,7 @@ async def main() -> None:
 
     paths = app.openapi()["paths"]
     assert "/api/delivery/quote" in paths
+    assert "/api/addresses/vendor-pickup" in paths
     assert "/api/admin/delivery/settings" in paths
     assert "/api/admin/delivery/{delivery_id}" in paths
     await engine.dispose()

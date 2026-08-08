@@ -527,9 +527,11 @@ The presets follow Indian vocational tailoring material rather than one universa
 - Role changes require explicit confirmation, take effect immediately, move the
   account to the correct directory, revoke its existing sessions so permissions
   cannot remain stale, and create an account activity notification.
-- Promoting an account to vendor requires a verified pickup address and precise
-  location. Administrator deletion is blocked until the role is changed or the
-  account is deactivated, preserving review/audit references.
+- Role promotion is permission-only and never calls a map provider. Newly
+  promoted vendors add their own verified workshop pickup point from Profile &
+  settings after signing in again; delivery workflows remain unavailable until
+  that setup is complete. Administrator deletion is blocked until the role is
+  changed or the account is deactivated, preserving review/audit references.
 
 ## Map-first delivery addresses
 

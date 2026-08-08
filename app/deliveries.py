@@ -154,7 +154,7 @@ async def geocode_vendor_pickup_coordinates(
 async def _ensure_vendor_pickup(vendor: User) -> None:
     if not vendor.vendor_pickup_address:
         raise MapProviderError(
-            f"{vendor.full_name} does not have an administrator-verified pickup address"
+            f"{vendor.full_name} has not configured a verified workshop pickup location"
         )
     if (
         vendor.vendor_pickup_place_id
