@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react"
-import { Bell, CheckCheck, ChevronRight, ClipboardList, Heart, LayoutGrid, LogOut, PackageCheck, ShieldCheck, ShoppingBag, Store, UserRound } from "lucide-react"
+import { Bell, CheckCheck, ChevronRight, ClipboardList, LayoutGrid, LogOut, PackageCheck, ShieldCheck, ShoppingBag, ShoppingCart, Store, UserRound, UsersRound } from "lucide-react"
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { Toaster, toast } from "react-hot-toast"
 import { api, closeSession, getAccessToken, getCurrentUser, onAuthChange } from "@/lib/api"
 import type { NotificationList, UserProfile } from "@/types/api"
 import { Brand } from "./Brand"
+import { ApiImage } from "./ApiImage"
 import { ModeToggle } from "./ThemeToggle"
+import { useCart } from "@/context/CartContext"
 
 const Layout = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(Boolean(getAccessToken()))
@@ -20,6 +22,7 @@ const Layout = () => {
   const notificationMenu = useRef<HTMLDivElement>(null)
   const location = useLocation()
   const navigate = useNavigate()
+  const cart = useCart()
 
   useEffect(() => onAuthChange(() => setIsAuthenticated(Boolean(getAccessToken()))), [])
 
@@ -38,6 +41,8 @@ const Layout = () => {
       "/reset-password": "Choose a new password",
       "/orders": "Orders",
       "/shop": "Shop",
+      "/cart": "Cart",
+      "/vendors": "Vendors",
       "/profile": "Profile & settings",
       "/vendor": "Vendor studio",
       "/vendor/products": "Vendor products",
@@ -53,6 +58,13 @@ const Layout = () => {
       return
     }
     getCurrentUser().then(setProfile).catch(() => setProfile(null))
+  }, [isAuthenticated])
+
+  useEffect(() => {
+    if (!isAuthenticated) return
+    const refreshProfile = () => { void getCurrentUser(true).then(setProfile).catch(() => setProfile(null)) }
+    window.addEventListener("profile:changed", refreshProfile)
+    return () => window.removeEventListener("profile:changed", refreshProfile)
   }, [isAuthenticated])
 
   useEffect(() => {
@@ -163,7 +175,6 @@ const Layout = () => {
     return new Date(createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })
   }
 
-  const isFavorites = location.pathname === "/" && location.search.includes("favorites")
   const mobileWorkspace = profile?.role === "vendor"
     ? { to: "/vendor", label: "Studio", icon: <Store size={19} />, active: location.pathname === "/vendor" || location.pathname === "/vendor/products" }
     : profile?.role === "admin" || profile?.role === "super_admin"
@@ -187,18 +198,14 @@ const Layout = () => {
           {isAuthenticated ? (
             <>
               <nav className="main-nav" aria-label="Main navigation">
-                <Link className={location.pathname === "/" && !isFavorites ? "active" : ""} to="/">
+                <Link className={location.pathname === "/" ? "active" : ""} to="/">
                   Designs
-                </Link>
-                <Link
-                  className={isFavorites ? "active" : ""}
-                  to="/?view=favorites"
-                >
-                  <Heart size={16} />
-                  Favorites
                 </Link>
                 <Link className={location.pathname === "/shop" ? "active" : ""} to="/shop">
                   <ShoppingBag size={16} /> Shop
+                </Link>
+                <Link className={location.pathname === "/vendors" ? "active" : ""} to="/vendors">
+                  <UsersRound size={16} /> Vendors
                 </Link>
                 <Link className={location.pathname === "/orders" ? "active" : ""} to="/orders">
                   <PackageCheck size={16} /> My orders
@@ -217,6 +224,7 @@ const Layout = () => {
                 )}
               </nav>
               <div className="header-actions">
+                <Link aria-label={`Cart with ${cart.lines.length} items`} className={`icon-button cart-header-button ${location.pathname === "/cart" ? "active" : ""}`} to="/cart"><ShoppingCart size={19} />{cart.lines.length > 0 && <span>{cart.lines.length > 9 ? "9+" : cart.lines.length}</span>}</Link>
                 <div className="notification-menu" ref={notificationMenu}>
                   <button
                     aria-expanded={notificationsOpen}
@@ -279,7 +287,7 @@ const Layout = () => {
                     onClick={() => setProfileOpen((open) => !open)}
                     type="button"
                   >
-                    <span className="avatar">{initials}</span>
+                    <span className="avatar">{profile?.profile_image_url ? <ApiImage alt={profile.full_name} src={profile.profile_image_url} /> : initials}</span>
                     <span className="avatar-copy">
                       <strong>{profile?.full_name || "My account"}</strong>
                       <small>{profile ? roleLabel : "View profile"}</small>
@@ -288,7 +296,7 @@ const Layout = () => {
                   {profileOpen && (
                     <div className="profile-popover" role="menu">
                       <div className="profile-popover-head">
-                        <span className="avatar large">{initials}</span>
+                        <span className="avatar large">{profile?.profile_image_url ? <ApiImage alt={profile.full_name} src={profile.profile_image_url} /> : initials}</span>
                         <div>
                           <strong>{profile?.full_name || "My account"}</strong>
                           <small>{profile?.email}</small>
@@ -322,11 +330,17 @@ const Layout = () => {
       </main>
       {isAuthenticated && profile && (
         <nav aria-label="Mobile navigation" className="mobile-bottom-nav">
-          <Link aria-current={location.pathname === "/" && !isFavorites ? "page" : undefined} className={location.pathname === "/" && !isFavorites ? "active" : ""} to="/">
+          <Link aria-current={location.pathname === "/" ? "page" : undefined} className={location.pathname === "/" ? "active" : ""} to="/">
             <LayoutGrid size={19} /><span>Designs</span>
           </Link>
           <Link aria-current={location.pathname === "/orders" ? "page" : undefined} className={location.pathname === "/orders" ? "active" : ""} to="/orders">
             <PackageCheck size={19} /><span>My orders</span>
+          </Link>
+          <Link aria-current={location.pathname === "/cart" ? "page" : undefined} className={location.pathname === "/cart" ? "active" : ""} to="/cart">
+            <ShoppingCart size={19} /><span>Cart{cart.lines.length ? ` (${cart.lines.length})` : ""}</span>
+          </Link>
+          <Link aria-current={location.pathname === "/vendors" ? "page" : undefined} className={location.pathname === "/vendors" ? "active" : ""} to="/vendors">
+            <UsersRound size={19} /><span>Vendors</span>
           </Link>
           {profile.role === "vendor" && <Link aria-current={location.pathname === "/vendor/sales-orders" ? "page" : undefined} className={location.pathname === "/vendor/sales-orders" ? "active" : ""} to="/vendor/sales-orders"><ClipboardList size={19} /><span>Sales</span></Link>}
           <Link aria-current={mobileWorkspace.active ? "page" : undefined} className={mobileWorkspace.active ? "active" : ""} to={mobileWorkspace.to}>

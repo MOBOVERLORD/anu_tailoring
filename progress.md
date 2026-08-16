@@ -547,6 +547,141 @@ The presets follow Indian vocational tailoring material rather than one universa
 - Save remains disabled until latitude, longitude, locality, state and Indian
   PIN code are resolved, preventing incomplete delivery destinations.
 
+## Fluid wide-screen layout
+
+- Replaced the fixed 1180px application/header container with a fluid container
+  that grows across desktop and ultrawide screens up to 2400px, with responsive
+  side gutters so content remains balanced instead of being pinned to a narrow
+  central column.
+- Removed the separate 1320px administration workspace cap so administration,
+  catalog, profile, orders and vendor pages all follow the same shared width.
+- Kept catalog cards at a compact desktop size while adding columns automatically
+  as usable width grows. Existing tablet and compact two-column mobile layouts
+  remain unchanged.
+
+## Vendor design creation media flow
+
+- Added image selection directly to the create/edit design dialog, including on
+  mobile. Vendors can preview and remove selected photos, identify the cover,
+  and see the combined existing/pending count without saving and reopening the
+  design card.
+- Saving now creates the private draft first and then uploads the selected images
+  through the backend in order. The existing limit of 10 JPEG/PNG/WebP images at
+  2 MB each is enforced before upload.
+- Added partial-upload recovery: if the draft saves but an image fails, the dialog
+  remains open on that same draft and retains only the images still needing a
+  retry, avoiding duplicate drafts and duplicate uploads.
+
+## Vendor discovery, onboarding, and custom requests
+
+- Added authenticated profile-photo upload and replacement for every account,
+  with the existing initials avatar retained as the fallback. Photos are limited
+  to validated JPEG/PNG/WebP files up to 2 MB, stored privately in GCS, served
+  only through backend media routes, and refreshed immediately across the header
+  and profile UI.
+- Added vendor shop profiles with editable shop name, description, and logo.
+  Logos use the same private backend-mediated media flow and appear with the shop
+  name in the public-to-signed-in vendor directory and administrator directory.
+- Added a **Vendors** destination to desktop and mobile navigation. Customers and
+  vendors can search by shop, owner, description, or location, save vendors as
+  favorites, filter to favorite vendors, and vendors cannot favorite or order
+  from their own shop.
+- Added customer vendor-access applications under Profile & settings. Requests
+  contain a proposed shop name and optional business note, notify administrators,
+  support rejected-request resubmission, and appear in a dedicated admin review
+  queue. Admins can approve or reject with a review note; approval changes the
+  account to vendor and unlocks shop/logo and pickup setup.
+- Added private custom-order requests from the vendor directory. A hidden
+  non-catalog design template connects each request to the existing measurement,
+  address, route quote, order rejection/cancellation, WebSocket chat, notification,
+  invoice approval, cloth, payment, and work-status workflows without polluting
+  the public design catalogue or vendor design manager.
+- Custom-order vendors can set the agreed tailoring service charge in the invoice
+  after discussing the request in chat. Published-design orders continue to lock
+  the service charge to the approved design price.
+- Added schema compatibility statements and indexes for account media, shop and
+  application data, favorite vendors, and private custom-order templates. Account
+  deletion also performs best-effort cleanup of its profile photo and shop logo.
+- Added `scripts.verify_vendor_directory`; backend schema/mapping checks, existing
+  invoice and WebSocket workflows, Python compilation, frontend production build,
+  frontend lint, and diff validation pass.
+
+## Vendor storefront and form readability
+
+- Removed the duplicate **Favorites** destination from the primary navigation;
+  saved designs remain available through the Favorites filter inside the design
+  catalog, and the Designs navigation item stays active for that filtered view.
+- Vendor cards now open a dedicated shop page instead of exposing only a custom
+  request action. The storefront presents the shop identity, description,
+  location, specialties, favorite control, approved made-to-measure designs, and
+  approved in-stock products owned by that vendor.
+- Replaced the vertically stacked storefront catalog with adjacent **Designs**
+  and **Products** tabs, rendering one collection at a time for quicker switching.
+  Removed the repeated custom-request banner at the bottom; the primary request
+  action remains in the shop header.
+- Simplified vendor-card actions into two clearly separated full-width rows and
+  shortened the customer-facing request label to **Custom order** in both the
+  directory and shop header.
+- Added vendor-filtered design and product catalog queries plus an authenticated
+  vendor-profile endpoint. Product cards deep-link into the existing product
+  purchase dialog, while design cards reuse the existing full image gallery,
+  favorite, and made-to-measure order flow.
+- Kept custom tailoring available from both the directory card and multiple
+  storefront entry points. Vendors cannot order from their own shop, and shops
+  without a saved pickup point now show the specific **Pickup setup pending**
+  state instead of the ambiguous **Orders opening soon** message.
+- Removed the duplicate custom-order delivery estimate. The route card is now the
+  single delivery price presentation; a concise note explains that tailoring is
+  quoted later without repeating the delivery amount.
+- Increased shared form-label, input, helper, profile navigation, and section-copy
+  readability. Inputs now have consistent 48px height and padding, upload format
+  guidance sits on its own line, and ultra-wide profile forms stop stretching
+  past a readable working width.
+- Extended `scripts.verify_vendor_directory` to verify vendor storefront routes
+  and vendor catalog filters. Frontend build/lint, Python compilation, product
+  shop, order invoice, WebSocket chat, and vendor schema checks pass.
+
+## Vendor-scoped combined cart, order, delivery, and invoice
+
+- Added a session-scoped cart that accepts both made-to-measure designs and shop
+  products, while enforcing one vendor per checkout. Adding an item from another
+  vendor now asks the buyer to finish or clear the current vendor cart first.
+- Replaced immediate design/product ordering with **Add to cart**. The cart keeps
+  each design's measurement, cloth choice, fabric preference and notes, plus each
+  product's quantity and selected options.
+- Added a dedicated responsive cart and navigation badge. Buyers choose one saved
+  address and request one vendor-to-address route quote for the complete cart.
+  Checkout submits every selected line as one atomic order with one delivery token.
+- Added vendor-scoped combined-order persistence for product lines, locked product
+  price snapshots, stock reservation/restoration, an order-level invoice, and
+  additional invoice line items. Existing tailoring and product order records remain
+  readable through their legacy flows.
+- New orders now enforce a single active vendor on the backend, reject own-shop
+  purchases, validate stock/options, and create only one `Delivery` record. Customer
+  cancellation or vendor rejection closes all lines, restores product stock, and
+  cancels the shared delivery; neither is allowed after invoice acceptance.
+- Vendors now create and send one invoice for the full order. The invoice locks
+  published tailoring prices, product totals and the one delivery charge, while
+  allowing custom tailoring, cloth and itemized agreed costs. Customers approve or
+  request changes once for the complete order.
+- Updated customer, vendor and administrator order cards to show design and product
+  lines together, one delivery summary, and one combined invoice. Legacy standalone
+  shop orders remain visible for historical compatibility.
+- Added compatibility schema creation for the new order product/invoice tables and
+  the nullable vendor scope on historical orders. Fixed the two `Order`-to-`User`
+  relationships to use explicit foreign keys.
+- Verification: frontend TypeScript/Vite production build passes; backend Python
+  compilation and FastAPI OpenAPI/schema loading pass, including combined invoice
+  and vendor rejection routes.
+- Simplified the customer checkout action from **Place combined order** to
+  **Place order**; grouping remains an internal order behavior rather than customer
+  terminology. Refined shared confirmation/cancellation popups with an inset body,
+  consistent edge spacing, rounded clipping, and mobile-safe action spacing so alert
+  cards, text fields, and buttons no longer touch the dialog edges.
+- Registration now labels the vendor address as a support contact and loads it from
+  the backend `VENDOR_CONTACT_EMAIL` setting through a narrowly allowlisted public
+  config endpoint. Provider credentials and other environment values remain private.
+
 ## Recommended next milestone
 
 1. Replace startup compatibility statements with versioned Alembic migrations

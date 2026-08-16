@@ -27,6 +27,7 @@ def serialize_design(design: Design) -> dict:
         "category": design.category,
         "garment_type": design.garment_type,
         "base_price": design.base_price,
+        "is_custom_request_template": design.is_custom_request_template,
         "image_url": cover,
         "vendor_id": design.vendor_id,
         "vendor_name": design.vendor.full_name if design.vendor else None,

@@ -57,7 +57,7 @@ export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdate
   const isVendor = profile.role === "vendor" && item.design.vendor_id === profile.id
   const isCustomer = order.customer.id === profile.id
   const itemClosed = item.work_status === "rejected" || item.work_status === "cancelled"
-  const canVendorReject = isVendor && !itemClosed && invoice?.status !== "approved"
+  const canVendorReject = !order.combined_order && isVendor && !itemClosed && invoice?.status !== "approved"
 
   useEffect(() => {
     setLiveComments((current) => {
@@ -293,7 +293,7 @@ export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdate
         ))}
       </ol>}
 
-      {delivery && (
+      {!order.combined_order && <>{delivery && (
         <section className="order-delivery-summary">
           <Truck size={22} />
           <div>
@@ -304,9 +304,9 @@ export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdate
           <span className={`delivery-status status-${delivery.status}`}>{delivery.status.replaceAll("_", " ")}</span>
           {delivery.tracking_url && <a className="button button-secondary" href={delivery.tracking_url} rel="noreferrer" target="_blank"><ExternalLink size={14} /> Track</a>}
         </section>
-      )}
+      )}</>}
 
-      {itemClosed ? (
+      {!order.combined_order && (itemClosed ? (
         <section className="order-closed-state"><XCircle size={25} /><div><h3>{item.work_status === "rejected" ? "Vendor rejected this item" : "Customer cancelled this order"}</h3><p>No invoice or tailoring actions can continue. The reason is recorded in the conversation below.</p></div></section>
       ) : !invoice ? (
         <section className="invoice-empty-state">
@@ -341,7 +341,7 @@ export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdate
             <div className="cloth-payment-form"><div><CircleDollarSign size={19} /><span><strong>Pay cloth cost: ₹{invoice.cloth_cost.toLocaleString("en-IN")}</strong><small>Use the vendor’s agreed offline payment method, then submit the transaction reference for verification.</small></span></div><div><input aria-label="Payment reference" onChange={(event) => setPaymentReference(event.target.value)} placeholder="UPI / bank transaction reference" value={paymentReference} /><button className="button" disabled={Boolean(busy) || paymentReference.trim().length < 3} onClick={() => setConfirmation({ title: "Submit this payment reference?", description: `Confirm that you paid ₹${invoice.cloth_cost.toLocaleString("en-IN")} for cloth using reference ${paymentReference.trim()}. The vendor will verify receipt.`, confirmLabel: "Submit reference", action: async () => { const done = await runAction("payment", `/api/orders/items/${item.id}/invoice/payment`, { payment_reference: paymentReference }); if (done) { setPaymentReference(""); toast.success("Payment reference sent for verification") } return done } })} type="button">Submit payment reference</button></div></div>
           )}
         </section>
-      )}
+      ))}
 
       <section className="order-comments">
         <div className="subsection-heading"><MessageSquare size={17} /><div><strong>Order chat <span className={`chat-live-indicator ${chatStatus}`}><i /> {chatStatus === "live" ? "Live" : chatStatus === "connecting" ? "Connecting" : "Reconnecting"}</span></strong><small>Customer, vendor, and administrators can keep job messages together.</small></div></div>
@@ -349,7 +349,7 @@ export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdate
         <form className="comment-form" onSubmit={addComment}><input aria-label="Send order chat message" disabled={chatStatus !== "live"} onChange={(event) => setComment(event.target.value)} placeholder={chatStatus === "live" ? "Write a message…" : "Reconnecting to chat…"} value={comment} /><button className="button" disabled={chatStatus !== "live" || !comment.trim()} type="submit"><ChevronRight size={16} /> Send</button></form>
       </section>
 
-      {invoiceOpen && <VendorInvoiceDialog item={item} onClose={() => setInvoiceOpen(false)} onUpdated={onUpdated} />}
+      {!order.combined_order && invoiceOpen && <VendorInvoiceDialog item={item} onClose={() => setInvoiceOpen(false)} onUpdated={onUpdated} />}
       {confirmation && <ConfirmActionDialog busy={Boolean(busy)} confirmLabel={confirmation.confirmLabel} description={confirmation.description} onCancel={() => setConfirmation(null)} onConfirm={confirmPendingAction} title={confirmation.title} />}
       {rejecting && <OrderCancellationDialog busy={busy === "reject"} confirmLabel="Reject order" description="Rejecting this design removes it from the active job and cancels your delivery charge when no other items from your shop remain. You cannot reject it after the customer accepts the invoice." onCancel={() => setRejecting(false)} onConfirm={(reason) => void rejectOrderItem(reason)} title={`Reject ${item.design.title}?`} />}
     </div>

@@ -22,6 +22,7 @@ from app.schemas import (
     UserCreate,
     UserLogin,
     UserResponse,
+    VendorApplicationResponse,
     UserUpdate,
     Token,
 )
@@ -548,12 +549,12 @@ async def logout(
     _clear_refresh_cookie(response)
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me", response_model=VendorApplicationResponse)
 async def read_users_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-@router.put("/me", response_model=UserResponse)
+@router.put("/me", response_model=VendorApplicationResponse)
 async def update_users_me(
     user_in: UserUpdate,
     current_user: User = Depends(get_current_user),

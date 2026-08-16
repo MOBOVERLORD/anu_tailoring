@@ -22,16 +22,18 @@ export function ConfirmActionDialog({
 }: ConfirmActionDialogProps) {
   return (
     <Dialog className="confirm-action-dialog" onClose={busy ? () => undefined : onCancel} title={title}>
-      <div className={`confirm-action-content tone-${tone}`}>
-        <span><AlertTriangle size={22} /></span>
-        <p>{description}</p>
-      </div>
-      <div className="dialog-actions">
-        <button className="button button-secondary" disabled={busy} onClick={onCancel} type="button">Cancel</button>
-        <button className={`button ${tone === "danger" ? "button-danger" : ""}`} disabled={busy} onClick={onConfirm} type="button">
-          {busy && <LoaderCircle className="spin" size={16} />}
-          {confirmLabel}
-        </button>
+      <div className="confirm-dialog-body">
+        <div className={`confirm-action-content tone-${tone}`}>
+          <span><AlertTriangle size={22} /></span>
+          <p>{description}</p>
+        </div>
+        <div className="dialog-actions">
+          <button className="button button-secondary" disabled={busy} onClick={onCancel} type="button">Cancel</button>
+          <button className={`button ${tone === "danger" ? "button-danger" : ""}`} disabled={busy} onClick={onConfirm} type="button">
+            {busy && <LoaderCircle className="spin" size={16} />}
+            {confirmLabel}
+          </button>
+        </div>
       </div>
     </Dialog>
   )

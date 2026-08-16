@@ -32,7 +32,7 @@ import { AppSelect } from "@/components/ui/AppSelect"
 import { api, getCurrentUser } from "@/lib/api"
 import type { Design, DesignImage, UserProfile } from "@/types/api"
 
-type AdminSection = "reviews" | "products" | "vendors" | "customers" | "staff" | "measurements" | "delivery"
+type AdminSection = "reviews" | "products" | "vendor-requests" | "vendors" | "customers" | "staff" | "measurements" | "delivery"
 type AccountFilter = "all" | "active" | "inactive"
 type ManageableRole = "customer" | "vendor" | "admin"
 const ADMIN_CATEGORY_OPTIONS = [{ value: "all", label: "All categories" }, { value: "women", label: "Women" }, { value: "men", label: "Men" }, { value: "unisex", label: "Unisex" }, { value: "kids", label: "Kids" }]
@@ -74,6 +74,7 @@ const AdminWorkspace = () => {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [designs, setDesigns] = useState<Design[]>([])
   const [vendors, setVendors] = useState<UserProfile[]>([])
+  const [vendorRequests, setVendorRequests] = useState<UserProfile[]>([])
   const [customers, setCustomers] = useState<UserProfile[]>([])
   const [staff, setStaff] = useState<UserProfile[]>([])
   const [section, setSection] = useState<AdminSection>("reviews")
@@ -82,6 +83,7 @@ const AdminWorkspace = () => {
   const [accountSearch, setAccountSearch] = useState("")
   const [accountFilter, setAccountFilter] = useState<AccountFilter>("all")
   const [comments, setComments] = useState<Record<number, string>>({})
+  const [vendorRequestComments, setVendorRequestComments] = useState<Record<number, string>>({})
   const [busyId, setBusyId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [vendorForm, setVendorForm] = useState(emptyVendorForm)
@@ -99,18 +101,20 @@ const AdminWorkspace = () => {
 
   const loadAdmin = useCallback(async () => {
     try {
-      const [me, queue, vendorUsers, customerUsers, staffUsers] = await Promise.all([
+      const [me, queue, vendorUsers, customerUsers, staffUsers, requests] = await Promise.all([
         getCurrentUser(),
         api<Design[]>("/api/admin/designs?status=submitted"),
         api<UserProfile[]>("/api/admin/users?role=vendor"),
         api<UserProfile[]>("/api/admin/users?role=customer"),
         api<UserProfile[]>("/api/admin/users?role=admin"),
+        api<UserProfile[]>("/api/admin/vendor-requests?status=pending"),
       ])
       setProfile(me)
       setDesigns(queue)
       setVendors(vendorUsers)
       setCustomers(customerUsers)
       setStaff(staffUsers)
+      setVendorRequests(requests)
     } catch (error) {
       toast.error((error as Error).message)
     } finally {
@@ -145,7 +149,7 @@ const AdminWorkspace = () => {
   const filteredUsers = useMemo(() => {
     const search = accountSearch.trim().toLowerCase()
     return directoryUsers.filter((user) => {
-      const matchesSearch = !search || [user.full_name, user.email, user.phone || ""]
+      const matchesSearch = !search || [user.full_name, user.shop_name || "", user.email, user.phone || ""]
         .some((value) => value.toLowerCase().includes(search))
       const matchesStatus = accountFilter === "all"
         || (accountFilter === "active" ? user.is_active : !user.is_active)
@@ -174,6 +178,28 @@ const AdminWorkspace = () => {
       })
       toast.success(decision === "approved" ? "Design approved and published" : "Design returned to vendor")
       setDesigns((current) => current.filter((item) => item.id !== design.id))
+    } catch (error) {
+      toast.error((error as Error).message)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const reviewVendorRequest = async (applicant: UserProfile, decision: "approved" | "rejected") => {
+    const comment = vendorRequestComments[applicant.id]?.trim()
+    if (decision === "rejected" && !comment) {
+      toast.error("Add a reason before rejecting this vendor request")
+      return
+    }
+    setBusyId(applicant.id)
+    try {
+      const updated = await api<UserProfile>(`/api/admin/vendor-requests/${applicant.id}/review`, {
+        method: "POST",
+        body: JSON.stringify({ decision, comment: comment || null }),
+      })
+      setVendorRequests((current) => current.filter((item) => item.id !== applicant.id))
+      if (decision === "approved") replaceUser(updated)
+      toast.success(decision === "approved" ? "Vendor access approved" : "Vendor request rejected")
     } catch (error) {
       toast.error((error as Error).message)
     } finally {
@@ -291,6 +317,9 @@ const AdminWorkspace = () => {
         <button className={section === "products" ? "active" : ""} onClick={() => setSection("products")} type="button">
           <ShoppingBag size={17} /> Shop products
         </button>
+        <button className={section === "vendor-requests" ? "active" : ""} onClick={() => setSection("vendor-requests")} type="button">
+          <UserCheck size={17} /> Vendor requests <span>{vendorRequests.length}</span>
+        </button>
         <button className={section === "vendors" ? "active" : ""} onClick={() => setSection("vendors")} type="button">
           <Store size={17} /> Vendors <span>{vendors.length}</span>
         </button>
@@ -354,6 +383,20 @@ const AdminWorkspace = () => {
         </section>
       ) : section === "products" ? (
         <ProductApprovals />
+      ) : section === "vendor-requests" ? (
+        <section className="admin-panel">
+          <div className="admin-panel-heading"><div><p className="eyebrow">Vendor onboarding</p><h2>Access requests</h2><p>Review registered customers who want to open a vendor studio.</p></div></div>
+          {loading ? <div className="loading-state"><LoaderCircle className="spin" /> Loading requests…</div> : vendorRequests.length === 0 ? <div className="admin-empty"><UserCheck size={36} /><h3>No pending vendor requests</h3><p>New applications will appear here.</p></div> : (
+            <div className="vendor-request-review-list">{vendorRequests.map((applicant) => (
+              <article className="vendor-request-review-card" key={applicant.id}>
+                <div className="vendor-request-review-head"><span className="avatar">{applicant.profile_image_url ? <ApiImage alt={applicant.full_name} src={applicant.profile_image_url} /> : applicant.full_name.split(" ").map((part) => part[0]).join("").slice(0, 2)}</span><div><small>Proposed shop</small><h3>{applicant.vendor_request_shop_name}</h3><p>{applicant.full_name} · {applicant.email}{applicant.phone ? ` · ${applicant.phone}` : ""}</p></div></div>
+                <p className="vendor-request-message">{applicant.vendor_request_message || "No additional application note was provided."}</p>
+                <div className="field"><label htmlFor={`vendor-request-comment-${applicant.id}`}>Reviewer note</label><textarea id={`vendor-request-comment-${applicant.id}`} maxLength={2000} onChange={(event) => setVendorRequestComments({ ...vendorRequestComments, [applicant.id]: event.target.value })} placeholder="Required when rejecting; optional when approving." rows={3} value={vendorRequestComments[applicant.id] || ""} /></div>
+                <div className="review-actions"><button className="button button-quiet danger" disabled={busyId === applicant.id} onClick={() => reviewVendorRequest(applicant, "rejected")} type="button"><X size={17} /> Reject</button><button className="button button-primary" disabled={busyId === applicant.id} onClick={() => reviewVendorRequest(applicant, "approved")} type="button">{busyId === applicant.id ? <LoaderCircle className="spin" size={17} /> : <UserCheck size={17} />} Approve vendor</button></div>
+              </article>
+            ))}</div>
+          )}
+        </section>
       ) : section === "measurements" ? (
         <MeasurementCategoriesAdmin />
       ) : section === "delivery" ? (
@@ -363,7 +406,7 @@ const AdminWorkspace = () => {
           <div className="admin-panel-heading">
             <div><p className="eyebrow">Account directory</p><h2>{section === "vendors" ? "Vendor accounts" : section === "staff" ? "Administrator accounts" : "Customer accounts"}</h2></div>
             <div className="admin-filters">
-              <label className="search-field"><Search size={17} /><input aria-label="Search accounts" onChange={(event) => setAccountSearch(event.target.value)} placeholder="Name, email, phone…" value={accountSearch} /></label>
+              <label className="search-field"><Search size={17} /><input aria-label="Search accounts" onChange={(event) => setAccountSearch(event.target.value)} placeholder={section === "vendors" ? "Shop, owner, email, phone…" : "Name, email, phone…"} value={accountSearch} /></label>
               <AppSelect ariaLabel="Filter by account status" className="toolbar-select" onValueChange={(value) => setAccountFilter(value as AccountFilter)} options={ACCOUNT_STATUS_OPTIONS} value={accountFilter} />
             </div>
           </div>
@@ -400,8 +443,8 @@ const AdminWorkspace = () => {
                 <div className="admin-empty"><Users size={34} /><h3>No matching accounts</h3><p>Try a different search or status filter.</p></div>
               ) : filteredUsers.map((user) => (
                 <article className={`account-card ${user.is_active ? "" : "inactive"}`} key={user.id}>
-                  <span className="avatar">{user.full_name.split(" ").map((part) => part[0]).join("").slice(0, 2)}</span>
-                  <div className="account-card-copy"><div><strong>{user.full_name}</strong><span className="account-role">{user.role.replace("_", " ")}</span><span className={`account-status ${user.is_active ? "active" : "inactive"}`}>{user.is_active ? "Active" : "Inactive"}</span></div><p>{user.email}</p><small>{user.phone || "No phone"}{user.location ? ` · ${user.location}` : ""}</small></div>
+                  <span className="avatar">{(section === "vendors" ? user.vendor_logo_url : user.profile_image_url) ? <ApiImage alt={section === "vendors" ? user.shop_name || user.full_name : user.full_name} src={(section === "vendors" ? user.vendor_logo_url : user.profile_image_url) as string} /> : user.full_name.split(" ").map((part) => part[0]).join("").slice(0, 2)}</span>
+                  <div className="account-card-copy"><div><strong>{section === "vendors" ? user.shop_name || user.full_name : user.full_name}</strong><span className="account-role">{user.role.replace("_", " ")}</span><span className={`account-status ${user.is_active ? "active" : "inactive"}`}>{user.is_active ? "Active" : "Inactive"}</span></div>{section === "vendors" && user.shop_name && <p>Owner: {user.full_name}</p>}<p>{user.email}</p><small>{user.phone || "No phone"}{user.location ? ` · ${user.location}` : ""}</small></div>
                   {isSuperAdmin && (
                     <div className="account-actions">
                       <button aria-label={`Edit ${user.full_name}`} className="icon-button" disabled={busyId === user.id} onClick={() => openEditUser(user)} type="button"><Edit3 size={16} /></button>

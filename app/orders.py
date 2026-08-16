@@ -29,13 +29,18 @@ from app.models import (
     Notification,
     Order,
     OrderComment,
+    OrderInvoice,
+    OrderInvoiceLineItem,
     OrderItem,
+    OrderProductItem,
     OrderStatus,
+    Product,
     User,
     UserRole,
     VendorInvoice,
     VendorInvoiceLineItem,
 )
+from app.product_service import serialize_product
 from app.schemas import (
     InvoiceDecision,
     OrderCancellationRequest,
@@ -86,7 +91,15 @@ def _order_options():
     return (
         selectinload(Order.user),
         selectinload(Order.address),
+        selectinload(Order.vendor),
         selectinload(Order.deliveries).selectinload(Delivery.vendor),
+        selectinload(Order.product_items)
+        .selectinload(OrderProductItem.product)
+        .selectinload(Product.images),
+        selectinload(Order.product_items)
+        .selectinload(OrderProductItem.product)
+        .selectinload(Product.vendor),
+        selectinload(Order.combined_invoice).selectinload(OrderInvoice.line_items),
         selectinload(Order.order_items).selectinload(OrderItem.measurement_profile),
         selectinload(Order.order_items)
         .selectinload(OrderItem.design)
@@ -122,6 +135,7 @@ def serialize_invoice(invoice: VendorInvoice) -> dict:
         "invoice_number": invoice.invoice_number,
         "revision": invoice.revision,
         "service_amount": invoice.service_amount,
+        "merchandise_amount": 0,
         "cloth_source": invoice.cloth_source,
         "cloth_type": invoice.cloth_type,
         "cloth_requirement": invoice.cloth_requirement,
@@ -146,6 +160,59 @@ def serialize_invoice(invoice: VendorInvoice) -> dict:
             f"/api/orders/items/{invoice.order_item_id}/invoice/cloth-bill"
             if invoice.cloth_bill_object_name
             else None
+        ),
+        "issued_at": invoice.issued_at,
+        "approved_at": invoice.approved_at,
+        "paid_at": invoice.paid_at,
+        "created_at": invoice.created_at,
+        "updated_at": invoice.updated_at,
+    }
+
+
+def serialize_combined_invoice(invoice: OrderInvoice) -> dict:
+    line_items = [
+        {
+            "id": item.id,
+            "name": item.name,
+            "description": item.description,
+            "quantity": item.quantity,
+            "unit_price": item.unit_price,
+            "total_amount": round(item.quantity * item.unit_price, 2),
+        }
+        for item in invoice.line_items
+    ]
+    additional_amount = round(sum(item["total_amount"] for item in line_items), 2)
+    return {
+        "id": invoice.id,
+        "invoice_number": invoice.invoice_number,
+        "revision": invoice.revision,
+        "service_amount": invoice.service_amount,
+        "merchandise_amount": invoice.merchandise_amount,
+        "cloth_source": invoice.cloth_source,
+        "cloth_type": invoice.cloth_type,
+        "cloth_requirement": invoice.cloth_requirement,
+        "cloth_cost": invoice.cloth_cost,
+        "delivery_cost": invoice.delivery_cost,
+        "line_items": line_items,
+        "additional_amount": additional_amount,
+        "total_amount": round(
+            invoice.service_amount
+            + invoice.merchandise_amount
+            + invoice.cloth_cost
+            + invoice.delivery_cost
+            + additional_amount,
+            2,
+        ),
+        "status": invoice.status,
+        "payment_status": invoice.payment_status,
+        "payment_reference": invoice.payment_reference,
+        "cloth_received": invoice.cloth_received,
+        "cloth_bill_filename": invoice.cloth_bill_original_filename,
+        "cloth_bill_content_type": invoice.cloth_bill_content_type,
+        "cloth_bill_size_bytes": invoice.cloth_bill_size_bytes,
+        "cloth_bill_url": (
+            f"/api/orders/{invoice.order_id}/invoice/cloth-bill"
+            if invoice.cloth_bill_object_name else None
         ),
         "issued_at": invoice.issued_at,
         "approved_at": invoice.approved_at,
@@ -192,7 +259,7 @@ def serialize_order(
     selected_vendor_ids = {item.design.vendor_id for item in selected_items}
     selected_deliveries = (
         list(order.deliveries)
-        if items is None
+        if items is None or order.vendor_id is not None
         else [delivery for delivery in order.deliveries if delivery.vendor_id in selected_vendor_ids]
     )
     inactive_work_statuses = {"cancelled", "rejected"}
@@ -200,22 +267,39 @@ def serialize_order(
         item for item in selected_items if item.work_status not in inactive_work_statuses
     ]
     active_vendor_ids = {item.design.vendor_id for item in active_items}
+    if order.vendor_id is not None:
+        active_vendor_ids.add(order.vendor_id)
     active_deliveries = [
         delivery for delivery in selected_deliveries
         if delivery.status != "cancelled" and delivery.vendor_id in active_vendor_ids
     ]
     service_amount = sum(item.price for item in active_items)
-    total_amount = round(sum(
-        item.invoice.service_amount
-        + item.invoice.cloth_cost
-        + item.invoice.delivery_cost
-        + sum(line.quantity * line.unit_price for line in item.invoice.line_items)
-        if item.invoice and (include_draft_invoices or item.invoice.status != "draft")
-        else item.price
-        for item in active_items
-    ) + sum(delivery.delivery_cost for delivery in active_deliveries), 2)
+    active_product_items = [
+        product_item for product_item in order.product_items
+        if product_item.status != "cancelled"
+    ]
+    merchandise_amount = sum(item.merchandise_total for item in active_product_items)
+    combined_invoice = order.combined_invoice
+    visible_combined_invoice = (
+        combined_invoice
+        if combined_invoice and (include_draft_invoices or combined_invoice.status != "draft")
+        else None
+    )
+    if visible_combined_invoice:
+        total_amount = serialize_combined_invoice(visible_combined_invoice)["total_amount"]
+    else:
+        total_amount = round(sum(
+            item.invoice.service_amount
+            + item.invoice.cloth_cost
+            + item.invoice.delivery_cost
+            + sum(line.quantity * line.unit_price for line in item.invoice.line_items)
+            if item.invoice and (include_draft_invoices or item.invoice.status != "draft")
+            else item.price
+            for item in active_items
+        ) + merchandise_amount + sum(delivery.delivery_cost for delivery in active_deliveries), 2)
     return {
         "id": order.id,
+        "combined_order": order.vendor_id is not None,
         "total_amount": total_amount,
         "service_amount": service_amount,
         "status": order.status.value if isinstance(order.status, OrderStatus) else order.status,
@@ -225,6 +309,20 @@ def serialize_order(
         "delivery_address": order.address,
         "deliveries": [serialize_order_delivery(delivery) for delivery in selected_deliveries],
         "order_items": [serialize_order_item(item, include_draft_invoices) for item in selected_items],
+        "product_items": [
+            {
+                "id": item.id,
+                "product": serialize_product(item.product),
+                "quantity": item.quantity,
+                "selected_size": item.selected_size,
+                "selected_color": item.selected_color,
+                "unit_price": item.unit_price,
+                "merchandise_total": item.merchandise_total,
+                "status": item.status,
+            }
+            for item in active_product_items
+        ],
+        "invoice": serialize_combined_invoice(visible_combined_invoice) if visible_combined_invoice else None,
     }
 
 
@@ -252,6 +350,22 @@ async def _loaded_order_item(item_id: int, db: AsyncSession) -> OrderItem | None
         )
     )
     return result.scalar_one_or_none()
+
+
+async def _vendor_combined_order(order_id: int, vendor: User, db: AsyncSession) -> Order:
+    await db.scalar(select(Order.id).where(Order.id == order_id).with_for_update())
+    order = await _loaded_order(order_id, db)
+    if not order or order.vendor_id != vendor.id:
+        raise HTTPException(status_code=404, detail="Vendor order not found")
+    return order
+
+
+async def _customer_combined_order(order_id: int, customer: User, db: AsyncSession) -> Order:
+    await db.scalar(select(Order.id).where(Order.id == order_id).with_for_update())
+    order = await _loaded_order(order_id, db)
+    if not order or order.user_id != customer.id or not order.vendor_id:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return order
 
 
 async def _vendor_order_item(
@@ -301,10 +415,10 @@ async def create_order(
     current_user: User = Depends(require_buyer),
     db: AsyncSession = Depends(get_db),
 ):
-    if not order_data.items:
+    if not order_data.items and not order_data.product_items:
         raise HTTPException(status_code=400, detail="Order must contain at least one item")
-    if len(order_data.items) > 10:
-        raise HTTPException(status_code=400, detail="An order can contain at most 10 items")
+    if len(order_data.items) + len(order_data.product_items) > 20:
+        raise HTTPException(status_code=400, detail="An order can contain at most 20 items")
 
     address = await db.get(DeliveryAddress, order_data.address_id)
     if not address or address.user_id != current_user.id:
@@ -329,9 +443,20 @@ async def create_order(
     ).scalars().all()
     designs_by_id = {design.id: design for design in designs}
     profiles_by_id = {profile.id: profile for profile in profiles}
+    product_ids = {item.product_id for item in order_data.product_items}
+    products = []
+    if product_ids:
+        products = list((await db.execute(
+            select(Product)
+            .where(Product.id.in_(product_ids))
+            .options(selectinload(Product.vendor), selectinload(Product.images))
+            .with_for_update()
+        )).scalars().unique().all())
+    products_by_id = {product.id: product for product in products}
 
     total_amount = 0.0
     items_to_create = []
+    product_items_to_create = []
     vendor_order_titles: dict[int, list[str]] = {}
     vendors_by_id: dict[int, User] = {}
     delivery_quote_tokens: dict[int, str] = {}
@@ -345,6 +470,13 @@ async def create_order(
             raise HTTPException(status_code=404, detail=f"Design {item.design_id} not found")
         if design.vendor_id == current_user.id:
             raise HTTPException(status_code=409, detail="You cannot order your own design")
+        if design.is_custom_request_template and (
+            not item.custom_instructions or len(item.custom_instructions.strip()) < 10
+        ):
+            raise HTTPException(
+                status_code=422,
+                detail="Describe the custom garment you want in at least 10 characters",
+            )
 
         profile = profiles_by_id.get(item.measurement_profile_id)
         if not profile:
@@ -382,6 +514,56 @@ async def create_order(
             )
         )
 
+    for item in order_data.product_items:
+        product = products_by_id.get(item.product_id)
+        if (
+            not product
+            or product.status != DesignStatus.APPROVED.value
+            or not product.vendor.is_active
+            or product.stock_quantity <= 0
+        ):
+            raise HTTPException(status_code=404, detail=f"Product {item.product_id} not found")
+        if product.vendor_id == current_user.id:
+            raise HTTPException(status_code=409, detail="You cannot order your own product")
+        quantity = float(item.quantity)
+        if quantity > product.stock_quantity:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Only {product.stock_quantity:g} {product.unit} of {product.title} remains",
+            )
+        if product.sizes and item.selected_size not in product.sizes:
+            raise HTTPException(status_code=422, detail=f"Choose an available size for {product.title}")
+        if product.colors and item.selected_color not in product.colors:
+            raise HTTPException(status_code=422, detail=f"Choose an available colour for {product.title}")
+        merchandise_total = round(product.price * quantity, 2)
+        total_amount = round(total_amount + merchandise_total, 2)
+        vendors_by_id[product.vendor_id] = product.vendor
+        vendor_order_titles.setdefault(product.vendor_id, []).append(product.title)
+        product_items_to_create.append(OrderProductItem(
+            product_id=product.id,
+            quantity=quantity,
+            selected_size=item.selected_size,
+            selected_color=item.selected_color,
+            unit_price=product.price,
+            merchandise_total=merchandise_total,
+        ))
+        product.stock_quantity = round(product.stock_quantity - quantity, 2)
+
+    if len(vendors_by_id) != 1:
+        raise HTTPException(
+            status_code=409,
+            detail="Checkout items must belong to one vendor. Place a separate order for each shop.",
+        )
+    vendor_id = next(iter(vendors_by_id))
+    supplied_tokens = set(delivery_quote_tokens.values())
+    if order_data.delivery_quote_token:
+        supplied_tokens.add(order_data.delivery_quote_token)
+    if len(supplied_tokens) > 1:
+        raise HTTPException(status_code=409, detail="Use one current delivery quote for this vendor order")
+    delivery_quote_tokens = {
+        vendor_id: next(iter(supplied_tokens))
+    } if supplied_tokens else {}
+
     delivery_quotes = await prepare_delivery_quotes(
         vendors_by_id.values(), address, db, delivery_quote_tokens
     )
@@ -392,8 +574,10 @@ async def create_order(
     new_order = Order(
         user_id=current_user.id,
         address_id=order_data.address_id,
+        vendor_id=vendor_id,
         total_amount=total_amount,
         order_items=items_to_create,
+        product_items=product_items_to_create,
     )
     try:
         db.add(new_order)
@@ -462,7 +646,9 @@ async def cancel_customer_order(
         raise HTTPException(status_code=409, detail="This order is already cancelled")
     if order.status in {OrderStatus.SHIPPED, OrderStatus.DELIVERED}:
         raise HTTPException(status_code=409, detail="An order already dispatched cannot be cancelled")
-    if any(item.invoice and item.invoice.status == "approved" for item in order.order_items):
+    if (
+        order.combined_invoice and order.combined_invoice.status == "approved"
+    ) or any(item.invoice and item.invoice.status == "approved" for item in order.order_items):
         raise HTTPException(
             status_code=409,
             detail="This order cannot be cancelled because an invoice has already been accepted",
@@ -478,6 +664,14 @@ async def cancel_customer_order(
             author_id=customer.id,
             message=f"Customer cancelled the order: {payload.reason}",
         ))
+    for product_item in order.product_items:
+        if product_item.status != "cancelled":
+            product_item.status = "cancelled"
+            product_item.product.stock_quantity = round(
+                product_item.product.stock_quantity + product_item.quantity, 2
+            )
+    if order.vendor_id:
+        vendor_ids.add(order.vendor_id)
     for delivery in order.deliveries:
         delivery.status = "cancelled"
         delivery.status_updated_at = datetime.now(timezone.utc)
@@ -502,19 +696,18 @@ async def get_vendor_orders(
     vendor: User = Depends(require_vendor),
     db: AsyncSession = Depends(get_db),
 ):
-    vendor_order_ids = (
+    legacy_vendor_order_ids = (
         select(Order.id)
         .join(Order.order_items)
         .join(OrderItem.design)
         .where(Design.vendor_id == vendor.id)
         .distinct()
     )
-    total = await db.scalar(select(func.count()).select_from(vendor_order_ids.subquery()))
+    vendor_filter = (Order.vendor_id == vendor.id) | Order.id.in_(legacy_vendor_order_ids)
+    total = await db.scalar(select(func.count(Order.id)).where(vendor_filter))
     result = await db.execute(
         select(Order)
-        .join(Order.order_items)
-        .join(OrderItem.design)
-        .where(Design.vendor_id == vendor.id)
+        .where(vendor_filter)
         .options(
             *_order_options(),
             with_loader_criteria(
@@ -532,7 +725,7 @@ async def get_vendor_orders(
         "items": [
         serialize_order(
             order,
-            list(order.order_items),
+            [item for item in order.order_items if item.design.vendor_id == vendor.id],
             include_draft_invoices=True,
         )
         for order in orders
@@ -541,6 +734,369 @@ async def get_vendor_orders(
         "limit": limit,
         "offset": offset,
     }
+
+
+@router.put("/vendor/{order_id}/invoice", response_model=OrderResponse)
+async def save_combined_order_invoice(
+    order_id: int,
+    payload: VendorInvoiceUpsert,
+    vendor: User = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    order = await _vendor_combined_order(order_id, vendor, db)
+    if order.status == OrderStatus.CANCELLED:
+        raise HTTPException(status_code=409, detail="A cancelled order cannot be invoiced")
+    invoice = order.combined_invoice
+    if invoice and invoice.status not in {"draft", "change_requested"}:
+        raise HTTPException(status_code=409, detail="This invoice can no longer be edited")
+    if invoice and payload.expected_revision != invoice.revision:
+        raise HTTPException(status_code=409, detail="This invoice changed in another tab. Reopen it first.")
+
+    standard_service = round(sum(
+        item.price for item in order.order_items
+        if not item.design.is_custom_request_template
+        and item.work_status not in {"cancelled", "rejected"}
+    ), 2)
+    custom_items = [
+        item for item in order.order_items
+        if item.design.is_custom_request_template
+        and item.work_status not in {"cancelled", "rejected"}
+    ]
+    if custom_items:
+        if payload.service_amount is None or float(payload.service_amount) < standard_service:
+            raise HTTPException(
+                status_code=422,
+                detail="The combined service charge cannot be below published design prices",
+            )
+        service_amount = float(payload.service_amount)
+        custom_total = round(service_amount - standard_service, 2)
+        custom_items[0].price = custom_total
+        for item in custom_items[1:]:
+            item.price = 0
+    else:
+        service_amount = round(sum(
+            item.price for item in order.order_items
+            if item.work_status not in {"cancelled", "rejected"}
+        ), 2)
+
+    vendor_supplies_cloth = any(
+        item.cloth_source == "vendor_supplied"
+        for item in order.order_items
+        if item.work_status not in {"cancelled", "rejected"}
+    )
+    if not vendor_supplies_cloth and payload.cloth_cost != 0:
+        raise HTTPException(status_code=422, detail="Cloth cost must be zero when customers provide all cloth")
+    merchandise_amount = round(sum(
+        item.merchandise_total for item in order.product_items if item.status != "cancelled"
+    ), 2)
+    delivery_cost = round(sum(
+        delivery.delivery_cost for delivery in order.deliveries if delivery.status != "cancelled"
+    ), 2)
+    values = {
+        "service_amount": service_amount,
+        "merchandise_amount": merchandise_amount,
+        "cloth_source": "vendor_supplied" if vendor_supplies_cloth else "customer_provided",
+        "cloth_type": payload.cloth_type,
+        "cloth_requirement": payload.cloth_requirement,
+        "cloth_cost": float(payload.cloth_cost),
+        "delivery_cost": delivery_cost,
+    }
+    new_lines = [
+        OrderInvoiceLineItem(
+            name=line.name,
+            description=line.description,
+            quantity=float(line.quantity),
+            unit_price=float(line.unit_price),
+        )
+        for line in payload.line_items
+    ]
+    if not invoice:
+        invoice = OrderInvoice(
+            order_id=order.id,
+            vendor_id=vendor.id,
+            invoice_number=f"VO-{order.id:06d}",
+            **values,
+        )
+        invoice.line_items = new_lines
+        db.add(invoice)
+    else:
+        for key, value in values.items():
+            setattr(invoice, key, value)
+        invoice.line_items = new_lines
+        invoice.status = "draft"
+        invoice.revision += 1
+        invoice.payment_status = "not_required"
+        invoice.payment_reference = None
+        invoice.cloth_received = False
+        invoice.issued_at = None
+        invoice.approved_at = None
+        invoice.paid_at = None
+    for item in order.order_items:
+        if item.work_status not in {"cancelled", "rejected"}:
+            item.work_status = "awaiting_invoice"
+    order.total_amount = round(
+        service_amount + merchandise_amount + float(payload.cloth_cost)
+        + delivery_cost + sum(float(line.quantity * line.unit_price) for line in payload.line_items),
+        2,
+    )
+    await db.commit()
+    return serialize_order(await _loaded_order(order.id, db), include_draft_invoices=True)
+
+
+@router.post("/vendor/{order_id}/invoice/issue", response_model=OrderResponse)
+async def issue_combined_order_invoice(
+    order_id: int,
+    vendor: User = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    order = await _vendor_combined_order(order_id, vendor, db)
+    invoice = order.combined_invoice
+    if not invoice or invoice.status != "draft":
+        raise HTTPException(status_code=409, detail="Create a draft invoice before sending it")
+    invoice.status = "issued"
+    invoice.issued_at = datetime.now(timezone.utc)
+    for item in order.order_items:
+        if item.work_status not in {"cancelled", "rejected"}:
+            item.work_status = "awaiting_approval"
+    db.add(Notification(
+        user_id=order.user_id,
+        title=f"Combined invoice ready for order #{order.id}",
+        message=f"{vendor.shop_name or vendor.full_name} sent one invoice for all items in your order.",
+        notification_type="invoice_issued",
+        link="/orders",
+    ))
+    await db.commit()
+    return serialize_order(await _loaded_order(order.id, db), include_draft_invoices=True)
+
+
+@router.post("/{order_id}/invoice/decision", response_model=OrderResponse)
+async def decide_combined_order_invoice(
+    order_id: int,
+    payload: InvoiceDecision,
+    customer: User = Depends(require_buyer),
+    db: AsyncSession = Depends(get_db),
+):
+    order = await _customer_combined_order(order_id, customer, db)
+    invoice = order.combined_invoice
+    if not invoice or invoice.status != "issued":
+        raise HTTPException(status_code=409, detail="This invoice is not awaiting approval")
+    if payload.decision == "change_requested":
+        if not payload.comment or not payload.comment.strip():
+            raise HTTPException(status_code=422, detail="Explain what the vendor should change")
+        invoice.status = "change_requested"
+        for item in order.order_items:
+            if item.work_status not in {"cancelled", "rejected"}:
+                item.work_status = "awaiting_invoice"
+        message = f"{customer.full_name} requested changes to the combined invoice."
+    else:
+        invoice.status = "approved"
+        invoice.approved_at = datetime.now(timezone.utc)
+        requires_payment = invoice.cloth_source == "vendor_supplied" and invoice.cloth_cost > 0
+        invoice.payment_status = "pending" if requires_payment else "not_required"
+        for item in order.order_items:
+            if item.work_status in {"cancelled", "rejected"}:
+                continue
+            item.work_status = (
+                "awaiting_cloth_payment" if requires_payment
+                else "awaiting_cloth" if item.cloth_source == "customer_provided"
+                else "ready_to_start"
+            )
+        for product_item in order.product_items:
+            if product_item.status != "cancelled":
+                product_item.status = "confirmed"
+        order.status = OrderStatus.CONFIRMED
+        message = f"{customer.full_name} approved the combined order invoice."
+    if payload.comment and payload.comment.strip() and order.order_items:
+        db.add(OrderComment(
+            order_item_id=order.order_items[0].id,
+            author_id=customer.id,
+            message=payload.comment.strip(),
+        ))
+    db.add(Notification(
+        user_id=order.vendor_id,
+        title=f"Combined invoice {payload.decision.replace('_', ' ')}",
+        message=message,
+        notification_type=f"invoice_{payload.decision}",
+        link="/vendor/sales-orders",
+    ))
+    await db.commit()
+    return serialize_order(await _loaded_order(order.id, db))
+
+
+@router.post("/vendor/{order_id}/invoice/cloth-bill", response_model=OrderResponse)
+async def upload_combined_cloth_bill(
+    order_id: int,
+    file: UploadFile = File(...),
+    vendor: User = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    order = await _vendor_combined_order(order_id, vendor, db)
+    invoice = order.combined_invoice
+    if (
+        not invoice or invoice.status != "approved"
+        or invoice.cloth_source != "vendor_supplied" or invoice.cloth_cost <= 0
+        or invoice.payment_status != "pending"
+    ):
+        raise HTTPException(status_code=409, detail="A cloth bill can be attached after invoice approval")
+    content_type = (file.content_type or "").lower()
+    if content_type not in {"application/pdf", "image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(status_code=400, detail="Cloth bill must be PDF, JPEG, PNG, or WebP")
+    max_bytes = settings.MAX_INVOICE_ATTACHMENT_MB * 1024 * 1024
+    try:
+        data = await file.read(max_bytes + 1)
+    finally:
+        await file.close()
+    if not data or len(data) > max_bytes:
+        raise HTTPException(status_code=400, detail=f"Cloth bill must be {settings.MAX_INVOICE_ATTACHMENT_MB} MB or smaller")
+    validate_invoice_attachment_bytes(data, content_type)
+    filename = re.sub(r"[\x00-\x1f\x7f]", "", PurePath(file.filename or "cloth-bill").name).strip()[:255] or "cloth-bill"
+    object_name = invoice_attachment_object_name(vendor.id, order.id, invoice.id, uuid4().hex, content_type)
+    await run_in_threadpool(upload_invoice_attachment, object_name, content_type, data)
+    old_object = invoice.cloth_bill_object_name
+    invoice.cloth_bill_bucket_name = bucket_name()
+    invoice.cloth_bill_object_name = object_name
+    invoice.cloth_bill_original_filename = filename
+    invoice.cloth_bill_content_type = content_type
+    invoice.cloth_bill_size_bytes = len(data)
+    invoice.cloth_bill_uploaded_at = datetime.now(timezone.utc)
+    await db.commit()
+    if old_object and old_object != object_name:
+        try:
+            await run_in_threadpool(delete_objects, [old_object])
+        except HTTPException:
+            pass
+    return serialize_order(await _loaded_order(order.id, db), include_draft_invoices=True)
+
+
+@router.get("/{order_id}/invoice/cloth-bill", response_class=Response)
+async def get_combined_cloth_bill(
+    order_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    order = await _loaded_order(order_id, db)
+    invoice = order.combined_invoice if order else None
+    allowed = bool(order and (
+        order.user_id == current_user.id or order.vendor_id == current_user.id
+        or current_user.role in {UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value}
+    ))
+    if not allowed or not invoice or not invoice.cloth_bill_object_name or not invoice.cloth_bill_content_type:
+        raise HTTPException(status_code=404, detail="Cloth bill not found")
+    etag = private_object_etag(invoice.cloth_bill_object_name)
+    headers = {"Cache-Control": "private, max-age=300", "ETag": etag, "Vary": "Authorization, Cookie", "X-Content-Type-Options": "nosniff", "Content-Disposition": "inline"}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    content = await run_in_threadpool(download_invoice_attachment, invoice.cloth_bill_object_name)
+    return Response(content=content, media_type=invoice.cloth_bill_content_type, headers=headers)
+
+
+@router.post("/{order_id}/invoice/payment", response_model=OrderResponse)
+async def submit_combined_cloth_payment(
+    order_id: int,
+    payload: PaymentReferenceCreate,
+    customer: User = Depends(require_buyer),
+    db: AsyncSession = Depends(get_db),
+):
+    order = await _customer_combined_order(order_id, customer, db)
+    invoice = order.combined_invoice
+    if not invoice or invoice.status != "approved" or invoice.payment_status != "pending":
+        raise HTTPException(status_code=409, detail="No cloth payment is currently required")
+    if not invoice.cloth_bill_object_name:
+        raise HTTPException(status_code=409, detail="The vendor must attach the cloth bill first")
+    invoice.payment_reference = payload.payment_reference
+    invoice.payment_status = "submitted"
+    for item in order.order_items:
+        if item.work_status == "awaiting_cloth_payment":
+            item.work_status = "awaiting_payment_verification"
+    db.add(Notification(user_id=order.vendor_id, title=f"Payment submitted for order #{order.id}", message=f"{customer.full_name} submitted payment reference {payload.payment_reference}.", notification_type="cloth_payment_submitted", link="/vendor/sales-orders"))
+    await db.commit()
+    return serialize_order(await _loaded_order(order.id, db))
+
+
+@router.post("/vendor/{order_id}/invoice/verify-payment", response_model=OrderResponse)
+async def verify_combined_cloth_payment(
+    order_id: int,
+    vendor: User = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    order = await _vendor_combined_order(order_id, vendor, db)
+    invoice = order.combined_invoice
+    if not invoice or invoice.payment_status != "submitted":
+        raise HTTPException(status_code=409, detail="No submitted cloth payment to verify")
+    invoice.payment_status = "paid"
+    invoice.paid_at = datetime.now(timezone.utc)
+    for item in order.order_items:
+        if item.work_status == "awaiting_payment_verification":
+            item.work_status = "ready_to_start"
+    db.add(Notification(user_id=order.user_id, title=f"Payment verified for order #{order.id}", message=f"{vendor.shop_name or vendor.full_name} verified your cloth payment.", notification_type="cloth_payment_verified", link="/orders"))
+    await db.commit()
+    return serialize_order(await _loaded_order(order.id, db), include_draft_invoices=True)
+
+
+@router.post("/vendor/{order_id}/cloth-received", response_model=OrderResponse)
+async def confirm_combined_customer_cloth(
+    order_id: int,
+    vendor: User = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    order = await _vendor_combined_order(order_id, vendor, db)
+    invoice = order.combined_invoice
+    if not invoice or invoice.status != "approved" or invoice.cloth_source != "customer_provided":
+        raise HTTPException(status_code=409, detail="Customer cloth receipt is not required")
+    invoice.cloth_received = True
+    for item in order.order_items:
+        if item.work_status == "awaiting_cloth":
+            item.work_status = "ready_to_start"
+    await db.commit()
+    return serialize_order(await _loaded_order(order.id, db), include_draft_invoices=True)
+
+
+@router.post("/vendor/{order_id}/reject", response_model=OrderResponse)
+async def reject_combined_order(
+    order_id: int,
+    payload: OrderCancellationRequest,
+    vendor: User = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reject every line in a vendor-scoped order as one atomic decision."""
+    await db.scalar(select(Order.id).where(Order.id == order_id).with_for_update())
+    order = await _vendor_combined_order(order_id, vendor, db)
+    if order.status == OrderStatus.CANCELLED:
+        raise HTTPException(status_code=409, detail="This order is already closed")
+    if order.combined_invoice and order.combined_invoice.status == "approved":
+        raise HTTPException(
+            status_code=409,
+            detail="This order cannot be rejected after the customer accepts the invoice",
+        )
+    for item in order.order_items:
+        if item.work_status not in {"cancelled", "rejected"}:
+            item.work_status = "rejected"
+            db.add(OrderComment(
+                order_item_id=item.id,
+                author_id=vendor.id,
+                message=f"Vendor rejected the combined order: {payload.reason}",
+            ))
+    for product_item in order.product_items:
+        if product_item.status != "cancelled":
+            product_item.status = "cancelled"
+            product_item.product.stock_quantity = round(
+                product_item.product.stock_quantity + product_item.quantity, 2
+            )
+    for delivery in order.deliveries:
+        delivery.status = "cancelled"
+        delivery.status_updated_at = datetime.now(timezone.utc)
+    order.status = OrderStatus.CANCELLED
+    order.total_amount = 0
+    db.add(Notification(
+        user_id=order.user_id,
+        title=f"Order #{order.id} rejected",
+        message=f"{vendor.shop_name or vendor.full_name} could not accept this order. Reason: {payload.reason}",
+        notification_type="order_rejected",
+        link="/orders",
+    ))
+    await db.commit()
+    return serialize_order(await _loaded_order(order.id, db), include_draft_invoices=True)
 
 
 @router.post("/vendor/items/{item_id}/reject", response_model=OrderResponse)
@@ -647,11 +1203,20 @@ async def save_vendor_invoice(
             detail="Cloth cost must be zero when the customer provides the cloth",
         )
 
+    if item.design.is_custom_request_template:
+        if payload.service_amount is None or payload.service_amount <= 0:
+            raise HTTPException(
+                status_code=422,
+                detail="Add the agreed tailoring service charge for this custom request",
+            )
+        item.price = float(payload.service_amount)
+    service_amount = item.price
+
     if not invoice:
         invoice = VendorInvoice(
             order_item_id=item.id,
             invoice_number=f"AT-{item.order_id:06d}-{item.id:04d}",
-            service_amount=item.price,
+            service_amount=service_amount,
             cloth_source=item.cloth_source,
             cloth_type=payload.cloth_type,
             cloth_requirement=payload.cloth_requirement,
@@ -669,7 +1234,7 @@ async def save_vendor_invoice(
         ]
         db.add(invoice)
     else:
-        invoice.service_amount = item.price
+        invoice.service_amount = service_amount
         invoice.cloth_source = item.cloth_source
         invoice.cloth_type = payload.cloth_type
         invoice.cloth_requirement = payload.cloth_requirement

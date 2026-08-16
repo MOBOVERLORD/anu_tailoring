@@ -26,6 +26,7 @@ from app import (
     notifications,
     orders,
     products,
+    vendors,
     vendor_designs,
 )
 
@@ -88,6 +89,34 @@ async def init_db_and_seed_admin():
         await conn.execute(text(
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_pickup_geocoded_at TIMESTAMPTZ"
         ))
+        for statement in (
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_bucket_name VARCHAR(255)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_object_name VARCHAR(1024)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_content_type VARCHAR(100)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_original_filename VARCHAR(255)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image_size_bytes INTEGER",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS shop_name VARCHAR(150)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS shop_description TEXT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_logo_bucket_name VARCHAR(255)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_logo_object_name VARCHAR(1024)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_logo_content_type VARCHAR(100)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_logo_original_filename VARCHAR(255)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_logo_size_bytes INTEGER",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_request_status VARCHAR(20)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_request_shop_name VARCHAR(150)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_request_message TEXT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_request_review_comment TEXT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_requested_at TIMESTAMPTZ",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_request_reviewed_at TIMESTAMPTZ",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_request_reviewed_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
+        ):
+            await conn.execute(text(statement))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_users_shop_name ON users (shop_name)"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_users_vendor_request_status ON users (vendor_request_status)"
+        ))
         await conn.execute(text(
             "ALTER TABLE delivery_addresses ADD COLUMN IF NOT EXISTS google_place_id VARCHAR(255)"
         ))
@@ -149,6 +178,10 @@ async def init_db_and_seed_admin():
             "ALTER TABLE designs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ"
         ))
         await conn.execute(text(
+            "ALTER TABLE designs ADD COLUMN IF NOT EXISTS is_custom_request_template "
+            "BOOLEAN NOT NULL DEFAULT FALSE"
+        ))
+        await conn.execute(text(
             "UPDATE designs SET updated_at = created_at WHERE updated_at IS NULL"
         ))
         await conn.execute(text(
@@ -164,8 +197,20 @@ async def init_db_and_seed_admin():
             "CREATE INDEX IF NOT EXISTS ix_designs_status ON designs (status)"
         ))
         await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_designs_custom_request_template "
+            "ON designs (is_custom_request_template)"
+        ))
+        await conn.execute(text(
             "ALTER TABLE order_items ADD COLUMN IF NOT EXISTS work_status "
             "VARCHAR(30) NOT NULL DEFAULT 'awaiting_invoice'"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE orders ADD COLUMN IF NOT EXISTS vendor_id INTEGER "
+            "REFERENCES users(id) ON DELETE RESTRICT"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_orders_vendor_created_at "
+            "ON orders (vendor_id, created_at DESC)"
         ))
         await conn.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_order_items_work_status "
@@ -403,9 +448,18 @@ app.include_router(products.admin_orders_router)
 app.include_router(deliveries.router)
 app.include_router(deliveries.admin_router)
 app.include_router(vendor_designs.router)
+app.include_router(vendors.router)
 app.include_router(admin.router)
 app.include_router(notifications.router)
 app.include_router(media.router)
+
+
+@app.get("/api/public/config", include_in_schema=False)
+async def public_app_config():
+    """Return the small allowlist of non-secret settings used before sign-in."""
+    return {
+        "vendor_contact_email": str(settings.VENDOR_CONTACT_EMAIL),
+    }
 
 
 @app.get("/health")

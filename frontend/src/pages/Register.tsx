@@ -1,10 +1,11 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, Mail, Phone, UserRound } from "lucide-react"
 import { Link, useNavigate } from "react-router-dom"
 import toast from "react-hot-toast"
 import { api } from "@/lib/api"
 
 const Register = () => {
+  const [vendorContactEmail, setVendorContactEmail] = useState("")
   const [form, setForm] = useState({
     full_name: "",
     email: "",
@@ -16,6 +17,12 @@ const Register = () => {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmation, setShowConfirmation] = useState(false)
   const navigate = useNavigate()
+
+  useEffect(() => {
+    api<{ vendor_contact_email: string }>("/api/public/config")
+      .then((config) => setVendorContactEmail(config.vendor_contact_email))
+      .catch(() => setVendorContactEmail(""))
+  }, [])
 
   const update = (key: keyof typeof form, value: string) => {
     setForm((current) => ({ ...current, [key]: value }))
@@ -107,8 +114,8 @@ const Register = () => {
           </button>
         </form>
         <p className="vendor-contact">
-          Are you a tailoring vendor? Vendor accounts are reviewed separately. Reach us at{" "}
-          <a href="mailto:vendors@vastrivo.com">vendors@vastrivo.com</a>.
+          Are you a tailoring vendor? Vendor accounts are reviewed separately.
+          {vendorContactEmail && <> Contact support at{" "}<a href={`mailto:${vendorContactEmail}`}>{vendorContactEmail}</a>.</>}
         </p>
       </div>
     </div>

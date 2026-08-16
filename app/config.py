@@ -64,7 +64,9 @@ class Settings(BaseSettings):
     GCS_SIGNING_SERVICE_ACCOUNT: Optional[EmailStr] = None
     MAX_DESIGN_IMAGE_MB: int = 2
     MAX_INVOICE_ATTACHMENT_MB: int = 5
-    VENDOR_CONTACT_EMAIL: str = "vendors@vastrivo.com"
+    # Safe to expose through the public UI config endpoint. This is the support
+    # contact shown to prospective vendors, not a provider credential.
+    VENDOR_CONTACT_EMAIL: EmailStr = "vendors@vastrivo.com"
 
     # Transactional email. Use `console` only for local development. On Cloud
     # Run, keep RESEND_API_KEY in Secret Manager and use `resend`.

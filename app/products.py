@@ -127,6 +127,7 @@ async def list_products(
     q: Optional[str] = Query(default=None, max_length=100),
     product_type: Optional[str] = Query(default=None),
     category: Optional[str] = Query(default=None),
+    vendor_id: Optional[int] = Query(default=None, ge=1),
     _: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -142,6 +143,8 @@ async def list_products(
         filters.append(Product.product_type == product_type)
     if category:
         filters.append(Product.category == category)
+    if vendor_id is not None:
+        filters.append(Product.vendor_id == vendor_id)
     rows = await db.execute(
         select(Product)
         .join(Product.vendor)

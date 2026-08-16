@@ -4,6 +4,14 @@ export interface UserProfile {
   email: string
   phone: string | null
   location: string | null
+  profile_image_url: string | null
+  shop_name: string | null
+  shop_description: string | null
+  vendor_logo_url: string | null
+  vendor_request_status: "pending" | "approved" | "rejected" | null
+  vendor_request_shop_name: string | null
+  vendor_request_message: string | null
+  vendor_request_review_comment: string | null
   vendor_pickup_address: string | null
   vendor_pickup_latitude: number | null
   vendor_pickup_longitude: number | null
@@ -31,6 +39,7 @@ export interface Design {
   category: "men" | "women" | "unisex" | "kids"
   garment_type: string
   base_price: number
+  is_custom_request_template: boolean
   image_url: string | null
   vendor_id: number | null
   vendor_name: string | null
@@ -92,6 +101,19 @@ export interface VendorSummary {
   submitted: number
   approved: number
   rejected: number
+}
+
+export interface VendorDirectoryItem {
+  id: number
+  full_name: string
+  shop_name: string
+  shop_description: string | null
+  location: string | null
+  profile_image_url: string | null
+  logo_url: string | null
+  is_favorite: boolean
+  custom_design_id: number | null
+  accepts_custom_orders: boolean
 }
 
 export interface AppNotification {
@@ -205,6 +227,7 @@ export interface VendorInvoice {
   invoice_number: string
   revision: number
   service_amount: number
+  merchandise_amount: number
   cloth_source: "vendor_supplied" | "customer_provided"
   cloth_type: string
   cloth_requirement: string
@@ -228,6 +251,17 @@ export interface VendorInvoice {
   updated_at: string
 }
 
+export interface OrderProductItem {
+  id: number
+  product: Product
+  quantity: number
+  selected_size: string | null
+  selected_color: string | null
+  unit_price: number
+  merchandise_total: number
+  status: string
+}
+
 export interface OrderItem {
   id: number
   design: Design
@@ -249,6 +283,7 @@ export interface OrderItem {
 
 export interface Order {
   id: number
+  combined_order: boolean
   total_amount: number
   service_amount: number
   status: OrderStatus
@@ -258,6 +293,8 @@ export interface Order {
   delivery_address: DeliveryAddress
   deliveries: OrderDelivery[]
   order_items: OrderItem[]
+  product_items: OrderProductItem[]
+  invoice: VendorInvoice | null
 }
 
 export type DeliveryStatus = "quote_ready" | "booked" | "picked_up" | "in_transit" | "delivered" | "cancelled"

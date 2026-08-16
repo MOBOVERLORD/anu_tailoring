@@ -10,10 +10,14 @@ import VendorWorkspace from "./pages/VendorWorkspace"
 import Orders from "./pages/Orders"
 import Shop from "./pages/Shop"
 import VendorProducts from "./pages/VendorProducts"
+import Vendors from "./pages/Vendors"
+import VendorStorefront from "./pages/VendorStorefront"
+import Cart from "./pages/Cart"
 import ForgotPassword from "./pages/ForgotPassword"
 import ResetPassword from "./pages/ResetPassword"
 import { getAccessToken, getCurrentUser } from "./lib/api"
 import type { UserProfile } from "./types/api"
+import { CartProvider } from "./context/CartContext"
 
 const textInputTypes = new Set(["text", "search", "tel", "email", "url", "password"])
 
@@ -59,7 +63,7 @@ function App() {
   useDefaultInputLimits()
   return (
     <Router>
-      <Routes>
+      <CartProvider><Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<RequireAuth><Home /></RequireAuth>} />
           <Route path="login" element={<Login />} />
@@ -69,13 +73,16 @@ function App() {
           <Route path="profile" element={<RequireAuth><Profile /></RequireAuth>} />
           <Route path="orders" element={<RequireAuth><Orders /></RequireAuth>} />
           <Route path="shop" element={<RequireAuth><Shop /></RequireAuth>} />
+          <Route path="cart" element={<RequireAuth><Cart /></RequireAuth>} />
+          <Route path="vendors" element={<RequireAuth><Vendors /></RequireAuth>} />
+          <Route path="vendors/:vendorId" element={<RequireAuth><VendorStorefront /></RequireAuth>} />
           <Route path="vendor" element={<RequireAuth><RequireRole roles={["vendor"]}><VendorWorkspace /></RequireRole></RequireAuth>} />
           <Route path="vendor/products" element={<RequireAuth><RequireRole roles={["vendor"]}><VendorProducts /></RequireRole></RequireAuth>} />
           <Route path="vendor/sales-orders" element={<RequireAuth><RequireRole roles={["vendor"]}><Orders mode="sales" /></RequireRole></RequireAuth>} />
           <Route path="admin" element={<RequireAuth><RequireRole roles={["admin", "super_admin"]}><AdminWorkspace /></RequireRole></RequireAuth>} />
           <Route path="*" element={<Navigate replace to="/" />} />
         </Route>
-      </Routes>
+      </Routes></CartProvider>
     </Router>
   )
 }

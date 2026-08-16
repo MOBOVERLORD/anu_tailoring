@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,11 +30,73 @@ from app.schemas import (
     DesignReviewRequest,
     AdminUserUpdate,
     VendorCreate,
+    VendorApplicationReview,
+    VendorApplicationResponse,
     UserResponse,
     UserStatusUpdate,
 )
+from app.storage import delete_objects
 
 router = APIRouter(prefix="/api/admin", tags=["administration"])
+
+
+@router.get("/vendor-requests", response_model=list[VendorApplicationResponse])
+async def list_vendor_requests(
+    request_status: str = Query(default="pending", alias="status"),
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    if request_status not in {"pending", "approved", "rejected", "all"}:
+        raise HTTPException(status_code=400, detail="Invalid vendor request status")
+    statement = select(User).where(User.vendor_request_status.is_not(None))
+    if request_status != "all":
+        statement = statement.where(User.vendor_request_status == request_status)
+    return (await db.execute(statement.order_by(User.vendor_requested_at.desc()))).scalars().all()
+
+
+@router.post("/vendor-requests/{user_id}/review", response_model=VendorApplicationResponse)
+async def review_vendor_request(
+    user_id: int,
+    payload: VendorApplicationReview,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    applicant = await db.scalar(
+        select(User).where(User.id == user_id).with_for_update()
+    )
+    if not applicant or applicant.vendor_request_status != "pending":
+        raise HTTPException(status_code=404, detail="Pending vendor request not found")
+    if applicant.role != UserRole.CUSTOMER.value:
+        raise HTTPException(status_code=409, detail="Only customer accounts can be approved as vendors")
+    comment = payload.comment.strip() if payload.comment else None
+    if payload.decision == "rejected" and not comment:
+        raise HTTPException(status_code=422, detail="Add a reason before rejecting the request")
+
+    now = datetime.now(timezone.utc)
+    applicant.vendor_request_status = payload.decision
+    applicant.vendor_request_review_comment = comment
+    applicant.vendor_request_reviewed_at = now
+    applicant.vendor_request_reviewed_by_id = admin.id
+    if payload.decision == "approved":
+        applicant.role = UserRole.VENDOR.value
+        applicant.shop_name = applicant.vendor_request_shop_name or applicant.full_name
+        title = "Vendor request approved"
+        message = "Your vendor studio is ready. Add your shop logo and workshop pickup location before accepting orders."
+        link = "/profile?section=shop"
+    else:
+        title = "Vendor request needs changes"
+        message = f"Your vendor request was not approved. Reviewer note: {comment}"
+        link = "/profile?section=vendor-request"
+    db.add(Notification(
+        user_id=applicant.id,
+        title=title,
+        message=message,
+        notification_type=f"vendor_request_{payload.decision}",
+        link=link,
+    ))
+    await db.commit()
+    await db.refresh(applicant)
+    return applicant
 
 
 @router.get("/designs", response_model=list[DesignResponse])
@@ -49,7 +112,10 @@ async def list_designs_for_review(
         raise HTTPException(status_code=400, detail="Invalid design status")
     result = await db.execute(
         select(Design)
-        .where(Design.status == review_status)
+        .where(
+            Design.status == review_status,
+            Design.is_custom_request_template.is_(False),
+        )
         .options(selectinload(Design.images), selectinload(Design.vendor))
         .order_by(Design.updated_at.asc())
     )
@@ -65,7 +131,10 @@ async def review_design(
 ):
     result = await db.execute(
         select(Design)
-        .where(Design.id == design_id)
+        .where(
+            Design.id == design_id,
+            Design.is_custom_request_template.is_(False),
+        )
         .options(selectinload(Design.images), selectinload(Design.vendor))
         .with_for_update()
     )
@@ -197,6 +266,7 @@ async def create_vendor(
 
     vendor = User(
         full_name=payload.full_name,
+        shop_name=payload.full_name,
         email=payload.email,
         phone=payload.phone,
         hashed_password=hash_password(payload.password),
@@ -267,6 +337,8 @@ async def update_managed_user(
             .values(revoked_at=datetime.now(timezone.utc))
         )
         became_vendor = requested_role == UserRole.VENDOR.value
+        if became_vendor and not user.shop_name:
+            user.shop_name = user.full_name
         db.add(Notification(
             user_id=user.id,
             title="Account role updated",
@@ -343,6 +415,11 @@ async def delete_managed_user(
             detail="This user has shop order history and cannot be deleted. Deactivate the account instead.",
         )
 
+    account_media = [
+        object_name
+        for object_name in (user.profile_image_object_name, user.vendor_logo_object_name)
+        if object_name
+    ]
     await db.delete(user)
     try:
         await db.commit()
@@ -352,3 +429,10 @@ async def delete_managed_user(
             status_code=409,
             detail="This account is referenced by business records and cannot be deleted. Deactivate it instead.",
         )
+    if account_media:
+        try:
+            await run_in_threadpool(delete_objects, account_media)
+        except HTTPException:
+            # Account deletion is already committed. A retryable orphan cleanup
+            # must not pretend the account still exists.
+            pass

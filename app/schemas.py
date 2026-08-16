@@ -70,6 +70,10 @@ class UserResponse(BaseModel):
     email: EmailStr
     phone: Optional[str] = None
     location: Optional[str] = None
+    profile_image_url: Optional[str] = None
+    shop_name: Optional[str] = None
+    shop_description: Optional[str] = None
+    vendor_logo_url: Optional[str] = None
     vendor_pickup_address: Optional[str] = None
     vendor_pickup_latitude: Optional[float] = None
     vendor_pickup_longitude: Optional[float] = None
@@ -79,6 +83,15 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class VendorApplicationResponse(UserResponse):
+    vendor_request_status: Optional[str] = None
+    vendor_request_shop_name: Optional[str] = None
+    vendor_request_message: Optional[str] = None
+    vendor_request_review_comment: Optional[str] = None
+    vendor_requested_at: Optional[datetime] = None
+    vendor_request_reviewed_at: Optional[datetime] = None
 
 
 class Token(BaseModel):
@@ -171,6 +184,62 @@ class VendorCreate(UserCreate):
         if (self.pickup_latitude is None) != (self.pickup_longitude is None):
             raise ValueError("Pickup latitude and longitude must be provided together")
         return self
+
+
+class VendorApplicationCreate(BaseModel):
+    shop_name: str = Field(min_length=2, max_length=150)
+    message: Optional[str] = Field(default=None, max_length=2000)
+
+    @field_validator("shop_name")
+    @classmethod
+    def normalize_shop_name(cls, v: str) -> str:
+        return " ".join(v.split())
+
+    @field_validator("message")
+    @classmethod
+    def normalize_application_message(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip() or None if v else None
+
+
+class VendorApplicationReview(BaseModel):
+    decision: str
+    comment: Optional[str] = Field(default=None, max_length=2000)
+
+    @field_validator("decision")
+    @classmethod
+    def valid_vendor_decision(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        if normalized not in {"approved", "rejected"}:
+            raise ValueError("Decision must be approved or rejected")
+        return normalized
+
+
+class VendorProfileUpdate(BaseModel):
+    shop_name: str = Field(min_length=2, max_length=150)
+    shop_description: Optional[str] = Field(default=None, max_length=2000)
+
+    @field_validator("shop_name")
+    @classmethod
+    def normalize_vendor_shop_name(cls, v: str) -> str:
+        return " ".join(v.split())
+
+    @field_validator("shop_description")
+    @classmethod
+    def normalize_shop_description(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip() or None if v else None
+
+
+class VendorDirectoryResponse(BaseModel):
+    id: int
+    full_name: str
+    shop_name: str
+    shop_description: Optional[str] = None
+    location: Optional[str] = None
+    profile_image_url: Optional[str] = None
+    logo_url: Optional[str] = None
+    is_favorite: bool = False
+    custom_design_id: Optional[int] = None
+    accepts_custom_orders: bool = False
 
 
 class UserStatusUpdate(BaseModel):
@@ -338,6 +407,7 @@ class DesignResponse(BaseModel):
     category: str
     garment_type: str
     base_price: float
+    is_custom_request_template: bool = False
     image_url: Optional[str] = None
     vendor_id: Optional[int] = None
     vendor_name: Optional[str] = None
@@ -600,9 +670,29 @@ class OrderItemCreate(BaseModel):
         return normalized
 
 
+class OrderProductItemCreate(BaseModel):
+    product_id: int
+    quantity: Decimal = Field(gt=0, le=1000, decimal_places=2)
+    selected_size: Optional[str] = Field(default=None, max_length=50)
+    selected_color: Optional[str] = Field(default=None, max_length=50)
+
+    @field_validator("selected_size", "selected_color")
+    @classmethod
+    def normalize_order_product_option(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip() or None if v else None
+
+
 class OrderCreate(BaseModel):
     address_id: int
-    items: List[OrderItemCreate]
+    items: List[OrderItemCreate] = Field(default_factory=list, max_length=10)
+    product_items: List[OrderProductItemCreate] = Field(default_factory=list, max_length=20)
+    delivery_quote_token: Optional[str] = Field(default=None, max_length=4000)
+
+    @model_validator(mode="after")
+    def contains_checkout_lines(self):
+        if not self.items and not self.product_items:
+            raise ValueError("Order must contain at least one design or product")
+        return self
 
 
 class VendorInvoiceLineItemUpsert(BaseModel):
@@ -629,6 +719,7 @@ class VendorInvoiceUpsert(BaseModel):
     model_config = {"extra": "forbid"}
 
     expected_revision: Optional[int] = Field(default=None, ge=1)
+    service_amount: Optional[Decimal] = Field(default=None, ge=0, le=1_000_000, decimal_places=2)
     cloth_type: str = Field(min_length=2, max_length=150)
     cloth_requirement: str = Field(min_length=10, max_length=2000)
     cloth_cost: Decimal = Field(default=Decimal("0"), ge=0, le=1_000_000, decimal_places=2)
@@ -654,7 +745,7 @@ class VendorInvoiceUpsert(BaseModel):
 
     @model_validator(mode="after")
     def reasonable_invoice_total(self):
-        variable_total = self.cloth_cost + sum(
+        variable_total = (self.service_amount or Decimal("0")) + self.cloth_cost + sum(
             (line.quantity * line.unit_price for line in self.line_items),
             Decimal("0"),
         )
@@ -737,6 +828,7 @@ class VendorInvoiceResponse(BaseModel):
     invoice_number: str
     revision: int
     service_amount: float
+    merchandise_amount: float = 0
     cloth_source: str
     cloth_type: str
     cloth_requirement: str
@@ -772,6 +864,20 @@ class OrderItemResponse(BaseModel):
     work_status: str
     invoice: Optional[VendorInvoiceResponse] = None
     comments: List[OrderCommentResponse] = Field(default_factory=list)
+
+    class Config:
+        from_attributes = True
+
+
+class OrderProductItemResponse(BaseModel):
+    id: int
+    product: ProductResponse
+    quantity: float
+    selected_size: Optional[str]
+    selected_color: Optional[str]
+    unit_price: float
+    merchandise_total: float
+    status: str
 
     class Config:
         from_attributes = True
@@ -976,6 +1082,7 @@ class DeliveryTrackingUpdate(BaseModel):
 
 class OrderResponse(BaseModel):
     id: int
+    combined_order: bool = False
     total_amount: float
     service_amount: float
     status: OrderStatus
@@ -985,6 +1092,8 @@ class OrderResponse(BaseModel):
     delivery_address: DeliveryAddressResponse
     deliveries: List[OrderDeliveryResponse] = Field(default_factory=list)
     order_items: List[OrderItemResponse]
+    product_items: List[OrderProductItemResponse] = Field(default_factory=list)
+    invoice: Optional[VendorInvoiceResponse] = None
 
     class Config:
         from_attributes = True

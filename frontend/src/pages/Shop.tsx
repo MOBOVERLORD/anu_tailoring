@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { CheckCircle2, ImageIcon, LoaderCircle, MapPin, Package, Search, ShoppingBag, Store, Truck } from "lucide-react"
+import { CheckCircle2, ImageIcon, LoaderCircle, Package, Search, ShoppingBag, Store } from "lucide-react"
 import toast from "react-hot-toast"
+import { useSearchParams } from "react-router-dom"
 import { ApiImage } from "@/components/ApiImage"
 import { Dialog } from "@/components/Dialog"
 import { ImageLightbox } from "@/components/ImageLightbox"
 import { AppSelect } from "@/components/ui/AppSelect"
+import { useCart } from "@/context/CartContext"
 import { api, getCurrentUser } from "@/lib/api"
 import { boundedNumber } from "@/lib/formLimits"
-import type { DeliveryAddress, DeliveryQuote, DesignImage, Product, ProductOrder, UserProfile } from "@/types/api"
-import { MapAttribution } from "@/components/MapAttribution"
+import type { DesignImage, Product, UserProfile } from "@/types/api"
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
 const SHOP_PRODUCT_TYPES = [{ value: "all", label: "All product types" }, { value: "ready_made", label: "Ready-made" }, { value: "fabric", label: "Fabric" }]
@@ -22,14 +23,12 @@ const Shop = () => {
   const [type, setType] = useState("all")
   const [category, setCategory] = useState("all")
   const [selected, setSelected] = useState<Product | null>(null)
-  const [addresses, setAddresses] = useState<DeliveryAddress[]>([])
-  const [addressId, setAddressId] = useState<number | "">("")
   const [quantity, setQuantity] = useState(1)
   const [size, setSize] = useState("")
-  const [quote, setQuote] = useState<DeliveryQuote | null>(null)
-  const [quoting, setQuoting] = useState(false)
-  const [ordering, setOrdering] = useState(false)
   const [lightbox, setLightbox] = useState<{ images: DesignImage[]; index: number } | null>(null)
+  const [openedProductParam, setOpenedProductParam] = useState<number | null>(null)
+  const [searchParams] = useSearchParams()
+  const cart = useCart()
 
   const load = useCallback(async () => {
     try {
@@ -53,60 +52,29 @@ const Shop = () => {
         .some((value) => value.toLowerCase().includes(term)))
   }), [category, products, search, type])
 
-  const openProduct = async (product: Product) => {
+  const openProduct = useCallback(async (product: Product) => {
     setSelected(product)
     setQuantity(1)
     setSize(product.sizes[0] || "")
-    setQuote(null)
-    if ((profile?.role === "customer" || profile?.role === "vendor") && product.vendor_id !== profile.id && addresses.length === 0) {
-      try {
-        const items = await api<DeliveryAddress[]>("/api/addresses")
-        setAddresses(items)
-        setAddressId(items.find((item) => item.is_default)?.id || items[0]?.id || "")
-      } catch (error) {
-        toast.error((error as Error).message)
-      }
-    }
-  }
+  }, [])
 
-  const getQuote = async () => {
-    if (!selected || !addressId) return
-    setQuoting(true)
-    try {
-      const result = await api<DeliveryQuote>("/api/delivery/quote", {
-        method: "POST",
-        body: JSON.stringify({ product_id: selected.id, address_id: Number(addressId) }),
-      })
-      setQuote(result)
-    } catch (error) {
-      toast.error((error as Error).message)
-    } finally {
-      setQuoting(false)
-    }
-  }
+  useEffect(() => {
+    const requestedId = Number(searchParams.get("product"))
+    if (loading || !Number.isInteger(requestedId) || requestedId <= 0 || openedProductParam === requestedId) return
+    const requested = products.find((product) => product.id === requestedId)
+    if (!requested) return
+    setOpenedProductParam(requestedId)
+    void openProduct(requested)
+  }, [loading, openProduct, openedProductParam, products, searchParams])
 
-  const placeOrder = async () => {
-    if (!selected || !addressId || !quote) return
-    setOrdering(true)
+  const addToCart = () => {
+    if (!selected) return
     try {
-      await api<ProductOrder>("/api/product-orders", {
-        method: "POST",
-        body: JSON.stringify({
-          product_id: selected.id,
-          address_id: Number(addressId),
-          quantity,
-          selected_size: size || null,
-          delivery_quote_token: quote.quote_token,
-        }),
-      })
-      toast.success("Order placed. The vendor has been notified.")
+      cart.addProduct({ vendor_id: selected.vendor_id, vendor_name: selected.vendor_name, product: selected, quantity, selected_size: size || null, selected_color: null })
+      toast.success("Product added to your vendor cart")
       setSelected(null)
-      await load()
     } catch (error) {
       toast.error((error as Error).message)
-      setQuote(null)
-    } finally {
-      setOrdering(false)
     }
   }
 
@@ -153,16 +121,15 @@ const Shop = () => {
               <div className={`product-stock ${selected.stock_quantity <= 5 ? "is-low" : ""}`}><span aria-hidden="true" />{selected.stock_quantity} {selected.unit} available{selected.stock_quantity <= 5 ? " · Low stock" : " · In stock"}</div>
               <p className="product-description">{selected.description}</p>
               <dl className="product-facts"><div><dt>Product type</dt><dd>{selected.product_type === "fabric" ? "Fabric" : "Ready-made garment"}</dd></div>{selected.garment_type && <div><dt>Style</dt><dd>{selected.garment_type}</dd></div>}</dl>
-              {profile?.role === "vendor" && selected.vendor_id === profile.id ? <div className="permission-note"><Package size={18} /><p>This is your own listing. Manage its price, stock, and images from Vendor products.</p></div> : profile?.role !== "customer" && profile?.role !== "vendor" ? <div className="permission-note"><Package size={18} /><p>Customer and vendor accounts can place shop orders.</p></div> : addresses.length === 0 ? <div className="permission-note"><MapPin size={18} /><p>Add a delivery address in Profile & settings before ordering.</p></div> : (
+              {profile?.role === "vendor" && selected.vendor_id === profile.id ? <div className="permission-note"><Package size={18} /><p>This is your own listing. Manage its price, stock, and images from Vendor products.</p></div> : profile?.role !== "customer" && profile?.role !== "vendor" ? <div className="permission-note"><Package size={18} /><p>Customer and vendor accounts can place shop orders.</p></div> : (
                 <div className="product-order-form">
-                  <div className="product-options-heading"><h3>Choose your options</h3><span>Required before checkout</span></div>
+                  <div className="product-options-heading"><h3>Choose your options</h3><span>Delivery is chosen once in the cart</span></div>
                   <div className="form-row">
-                    <div className="field"><label htmlFor="product-quantity">Quantity ({selected.unit})</label><input id="product-quantity" min={selected.unit === "piece" ? 1 : 0.1} max={selected.stock_quantity} onChange={(event) => { setQuantity(boundedNumber(event.target.value, 0, selected.stock_quantity)); setQuote(null) }} step={selected.unit === "piece" ? 1 : 0.1} type="number" value={quantity} /></div>
+                    <div className="field"><label htmlFor="product-quantity">Quantity ({selected.unit})</label><input id="product-quantity" min={selected.unit === "piece" ? 1 : 0.1} max={selected.stock_quantity} onChange={(event) => setQuantity(boundedNumber(event.target.value, 0, selected.stock_quantity))} step={selected.unit === "piece" ? 1 : 0.1} type="number" value={quantity} /></div>
                     {selected.sizes.length > 0 && <div className="field"><label htmlFor="product-size">Size</label><AppSelect id="product-size" onValueChange={setSize} options={selected.sizes.map((item) => ({ value: item, label: item }))} value={size} /></div>}
                   </div>
-                  <div className="field"><label htmlFor="product-address">Deliver to</label><AppSelect id="product-address" onValueChange={(value) => { setAddressId(Number(value)); setQuote(null) }} options={addresses.map((address) => ({ value: String(address.id), label: `${address.recipient_name} · ${address.street_address}, ${address.city}` }))} placeholder="Choose a delivery address" value={String(addressId)} /></div>
-                  {!quote ? <button className="button button-primary button-wide product-purchase-action" disabled={quoting || !addressId || quantity <= 0 || quantity > selected.stock_quantity} onClick={getQuote} type="button">{quoting ? <LoaderCircle className="spin" size={17} /> : <Truck size={17} />} Calculate delivery &amp; total</button> : <div className="shop-total"><div><span>Products</span><strong>{money(selected.price * quantity)}</strong></div><div><span>Delivery · {(quote.distance_meters / 1000).toFixed(1)} km</span><strong>{money(quote.delivery_cost)}</strong></div><div><span>Total</span><strong>{money(selected.price * quantity + quote.delivery_cost)}</strong></div><MapAttribution provider={quote.maps_provider} /></div>}
-                  {quote && <button className="button button-primary button-wide" disabled={ordering} onClick={placeOrder} type="button">{ordering ? <LoaderCircle className="spin" size={17} /> : <ShoppingBag size={17} />} Place order</button>}
+                  <div className="shop-total"><div><span>Products</span><strong>{money(selected.price * quantity)}</strong></div><p>Products and designs from {selected.vendor_name} are grouped into one order with one delivery charge.</p></div>
+                  <button className="button button-primary button-wide" disabled={quantity <= 0 || quantity > selected.stock_quantity || (selected.sizes.length > 0 && !size)} onClick={addToCart} type="button"><ShoppingBag size={17} /> Add to cart</button>
                 </div>
               )}
             </div>

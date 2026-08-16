@@ -9,6 +9,7 @@ import {
   Send,
   Sparkles,
   Trash2,
+  X,
 } from "lucide-react"
 import toast from "react-hot-toast"
 import { ApiImage } from "@/components/ApiImage"
@@ -47,6 +48,7 @@ const VendorWorkspace = () => {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Design | null>(null)
   const [form, setForm] = useState<DesignInput>(emptyForm)
+  const [formImages, setFormImages] = useState<File[]>([])
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | DesignStatus>("all")
@@ -85,6 +87,15 @@ const VendorWorkspace = () => {
     })
   }, [designs, search, statusFilter])
 
+  const formImagePreviews = useMemo(
+    () => formImages.map((file) => ({ file, url: URL.createObjectURL(file) })),
+    [formImages],
+  )
+
+  useEffect(() => () => {
+    formImagePreviews.forEach(({ url }) => URL.revokeObjectURL(url))
+  }, [formImagePreviews])
+
   const openLightbox = (design: Design, imageId: number) => {
     const images = design.images.filter((image) => image.url)
     const index = Math.max(0, images.findIndex((image) => image.id === imageId))
@@ -94,11 +105,13 @@ const VendorWorkspace = () => {
   const openCreate = () => {
     setEditing(null)
     setForm(emptyForm)
+    setFormImages([])
     setFormOpen(true)
   }
 
   const openEdit = (design: Design) => {
     setEditing(design)
+    setFormImages([])
     setForm({
       title: design.title,
       description: design.description,
@@ -109,23 +122,74 @@ const VendorWorkspace = () => {
     setFormOpen(true)
   }
 
+  const closeForm = () => {
+    if (saving) return
+    setFormImages([])
+    setFormOpen(false)
+  }
+
+  const chooseFormImages = (files: FileList | null) => {
+    if (!files?.length) return
+    const selected = Array.from(files)
+    const existingCount = editing?.images.length ?? 0
+    if (existingCount + formImages.length + selected.length > MAX_IMAGES_PER_DESIGN) {
+      toast.error(`Each design can have up to ${MAX_IMAGES_PER_DESIGN} images`)
+      return
+    }
+    const invalid = selected.find(
+      (file) =>
+        !["image/jpeg", "image/png", "image/webp"].includes(file.type)
+        || file.size <= 0
+        || file.size > MAX_IMAGE_BYTES,
+    )
+    if (invalid) {
+      toast.error("Use JPEG, PNG, or WebP files up to 2 MB each")
+      return
+    }
+    setFormImages((current) => [...current, ...selected])
+  }
+
   const saveDesign = async (event: React.FormEvent) => {
     event.preventDefault()
     setSaving(true)
+    let savedDesign: Design | null = null
+    let uploadedCount = 0
     try {
-      await api(editing ? `/api/vendor/designs/${editing.id}` : "/api/vendor/designs", {
+      savedDesign = await api<Design>(editing ? `/api/vendor/designs/${editing.id}` : "/api/vendor/designs", {
         method: editing ? "PUT" : "POST",
         body: JSON.stringify({ ...form, base_price: Number(form.base_price) }),
       })
+
+      for (const file of formImages) {
+        const imageData = new FormData()
+        imageData.append("file", file)
+        imageData.append("sort_order", String(savedDesign.images.length))
+        savedDesign = await api<Design>(`/api/vendor/designs/${savedDesign.id}/images`, {
+          method: "POST",
+          body: imageData,
+        })
+        uploadedCount += 1
+      }
+
       toast.success(
         editing?.status === "approved"
           ? "Published design moved to draft. Submit it again after your changes."
-          : editing ? "Draft updated" : "Draft created",
+          : formImages.length
+            ? `Draft saved with ${formImages.length} image${formImages.length > 1 ? "s" : ""}`
+            : editing ? "Draft updated" : "Draft created",
       )
+      setFormImages([])
       setFormOpen(false)
       await loadWorkspace()
     } catch (error) {
-      toast.error((error as Error).message)
+      if (savedDesign) {
+        setEditing(savedDesign)
+        setFormImages((current) => current.slice(uploadedCount))
+        toast.error(`Draft saved, but an image could not upload: ${(error as Error).message}. Retry from this form.`)
+        await loadWorkspace()
+      } else {
+        toast.error((error as Error).message)
+      }
     } finally {
       setSaving(false)
     }
@@ -405,8 +469,8 @@ const VendorWorkspace = () => {
         <Dialog
           description={editing?.status === "approved"
             ? "Saving changes will remove this design from the live collection and create a draft that must be approved again."
-            : "Save the details as a draft. Images are managed from the design card."}
-          onClose={() => setFormOpen(false)}
+            : "Add the details and photos together. We create the private draft before uploading its images."}
+          onClose={closeForm}
           title={editing ? "Edit design" : "Create a design"}
         >
           <form className="dialog-form form-stack" onSubmit={saveDesign}>
@@ -432,10 +496,60 @@ const VendorWorkspace = () => {
               <label htmlFor="base-price">Tailoring service price (₹)</label>
               <input id="base-price" max={1_000_000} min={1} required type="number" value={form.base_price || ""} onChange={(event) => setForm({ ...form, base_price: boundedNumber(event.target.value, 0, 1_000_000) })} />
             </div>
+            <section className="design-form-media">
+              <div className="design-form-media-heading">
+                <div>
+                  <strong>Design photos</strong>
+                  <span>Add up to 10 clear views. The first photo is used as the cover.</span>
+                </div>
+                <span>{(editing?.images.length ?? 0) + formImages.length}/{MAX_IMAGES_PER_DESIGN}</span>
+              </div>
+
+              {formImagePreviews.length > 0 && (
+                <div className="design-form-previews" aria-label="Selected design photos">
+                  {formImagePreviews.map(({ file, url }, index) => (
+                    <div className="design-form-preview" key={`${file.name}-${file.lastModified}-${index}`}>
+                      <img alt={`Selected design ${index + 1}`} src={url} />
+                      <button
+                        aria-label={`Remove ${file.name}`}
+                        onClick={() => setFormImages((current) => current.filter((_, imageIndex) => imageIndex !== index))}
+                        type="button"
+                      >
+                        <X size={15} />
+                      </button>
+                      <span>{(editing?.images.length ?? 0) === 0 && index === 0 ? "Cover" : "New"}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <label className="design-form-image-picker">
+                <span className="design-form-image-picker-icon"><ImagePlus size={22} /></span>
+                <span>
+                  <strong>{formImages.length ? "Add more photos" : "Choose design photos"}</strong>
+                  <small>JPEG, PNG or WebP · maximum 2 MB each</small>
+                </span>
+                <input
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={(editing?.images.length ?? 0) + formImages.length >= MAX_IMAGES_PER_DESIGN || saving}
+                  multiple
+                  onChange={(event) => {
+                    chooseFormImages(event.target.files)
+                    event.target.value = ""
+                  }}
+                  type="file"
+                />
+              </label>
+              {!!editing?.images.length && (
+                <p className="design-form-existing-note">
+                  This design already has {editing.images.length} photo{editing.images.length > 1 ? "s" : ""}. You can manage them from its design card.
+                </p>
+              )}
+            </section>
             <div className="dialog-actions">
-              <button className="button button-quiet" onClick={() => setFormOpen(false)} type="button">Cancel</button>
+              <button className="button button-quiet" disabled={saving} onClick={closeForm} type="button">Cancel</button>
               <button className="button button-primary" disabled={saving} type="submit">
-                {saving ? "Saving…" : "Save draft"}
+                {saving ? <><LoaderCircle className="spin" size={17} /> Saving &amp; uploading…</> : formImages.length ? "Save draft & upload" : "Save draft"}
               </button>
             </div>
           </form>

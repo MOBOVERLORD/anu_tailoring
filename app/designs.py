@@ -17,11 +17,15 @@ router = APIRouter(prefix="/api/designs", tags=["designs"])
 async def get_designs(
     category: Optional[str] = None,
     garment_type: Optional[str] = None,
+    vendor_id: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
 ):
     query = (
         select(Design)
-        .where(Design.status == DesignStatus.APPROVED.value)
+        .where(
+            Design.status == DesignStatus.APPROVED.value,
+            Design.is_custom_request_template.is_(False),
+        )
         .options(selectinload(Design.images), selectinload(Design.vendor))
         .order_by(Design.created_at.desc())
     )
@@ -29,6 +33,8 @@ async def get_designs(
         query = query.where(Design.category == category)
     if garment_type:
         query = query.where(Design.garment_type == garment_type)
+    if vendor_id is not None:
+        query = query.where(Design.vendor_id == vendor_id)
     result = await db.execute(query)
     return await serialize_designs_async(list(result.scalars().all()))
 
@@ -43,6 +49,7 @@ async def like_design(
         select(Design).where(
             Design.id == design_id,
             Design.status == DesignStatus.APPROVED.value,
+            Design.is_custom_request_template.is_(False),
         )
     )
     if not design:
@@ -99,6 +106,7 @@ async def get_my_liked_designs(
         design
         for design in user.liked_designs
         if design.status == DesignStatus.APPROVED.value
+        and not design.is_custom_request_template
     ])
 
 
@@ -109,6 +117,7 @@ async def get_design(design_id: int, db: AsyncSession = Depends(get_db)):
         .where(
             Design.id == design_id,
             Design.status == DesignStatus.APPROVED.value,
+            Design.is_custom_request_template.is_(False),
         )
         .options(selectinload(Design.images), selectinload(Design.vendor))
     )

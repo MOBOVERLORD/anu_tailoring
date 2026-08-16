@@ -5,6 +5,7 @@ import { ApiImage } from "@/components/ApiImage"
 import { ConfirmActionDialog } from "@/components/ConfirmActionDialog"
 import { OrderItemDetail } from "@/components/OrderItemDetail"
 import { OrderCancellationDialog } from "@/components/OrderCancellationDialog"
+import { CombinedOrderInvoice } from "@/components/CombinedOrderInvoice"
 import { ProductOrdersPanel, type CustomerOrderView } from "@/components/ProductOrdersPanel"
 import { AppSelect } from "@/components/ui/AppSelect"
 import { api, getCurrentUser } from "@/lib/api"
@@ -50,6 +51,7 @@ const Orders = ({ mode = "purchases" }: { mode?: "purchases" | "sales" }) => {
   const [busyId, setBusyId] = useState<number | null>(null)
   const [statusConfirmation, setStatusConfirmation] = useState<Order | null>(null)
   const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null)
+  const [rejectingOrder, setRejectingOrder] = useState<Order | null>(null)
   const [customerView, setCustomerView] = useState<CustomerOrderView>("in_progress")
 
   const loadOrders = useCallback(async () => {
@@ -94,7 +96,9 @@ const Orders = ({ mode = "purchases" }: { mode?: "purchases" | "sales" }) => {
       const isBuyerView = profile?.role === "customer" || (profile?.role === "vendor" && mode === "purchases")
       const matchesCustomerView = !isBuyerView
         || (customerView === "closed"
-          ? order.status === "cancelled" || order.order_items.every((item) => ["cancelled", "rejected"].includes(item.work_status))
+          ? order.status === "cancelled" || ((order.order_items.length + order.product_items.length) > 0
+            && order.order_items.every((item) => ["cancelled", "rejected"].includes(item.work_status))
+            && order.product_items.every((item) => item.status === "cancelled"))
           : customerView === "completed"
             ? order.status === "delivered"
             : !["cancelled", "delivered"].includes(order.status))
@@ -104,6 +108,7 @@ const Orders = ({ mode = "purchases" }: { mode?: "purchases" | "sales" }) => {
         order.customer.email,
         order.tracking_number || "",
         ...order.order_items.flatMap((item) => [item.design.title, item.design.vendor_name || ""]),
+        ...order.product_items.flatMap((item) => [item.product.title, item.product.vendor_name]),
       ].join(" ").toLowerCase()
       return matchesStatus && matchesCustomerView && (!normalized || haystack.includes(normalized))
     })
@@ -169,6 +174,15 @@ const Orders = ({ mode = "purchases" }: { mode?: "purchases" | "sales" }) => {
     }
   }
 
+  const rejectVendorOrder = async (reason: string) => {
+    if (!rejectingOrder) return
+    setBusyId(rejectingOrder.id)
+    try {
+      const updated = await api<Order>(`/api/orders/vendor/${rejectingOrder.id}/reject`, { method: "POST", body: JSON.stringify({ reason }) })
+      replaceOrder(updated); setRejectingOrder(null); toast.success(`Order #${updated.id} rejected`)
+    } catch (error) { toast.error((error as Error).message) } finally { setBusyId(null) }
+  }
+
   const toggleOrder = (orderId: number) => {
     setExpandedOrders((current) => {
       const next = new Set(current)
@@ -221,8 +235,8 @@ const Orders = ({ mode = "purchases" }: { mode?: "purchases" | "sales" }) => {
         <section className="order-list">
           {visibleOrders.map((order) => {
             const expanded = expandedOrders.has(order.id)
-            const hasInvoice = order.order_items.some((item) => item.invoice)
-            const invoiceAccepted = order.order_items.some((item) => item.invoice?.status === "approved")
+            const hasInvoice = Boolean(order.invoice) || order.order_items.some((item) => item.invoice)
+            const invoiceAccepted = order.invoice?.status === "approved" || order.order_items.some((item) => item.invoice?.status === "approved")
             const customerCanCancel = isBuyerView && order.customer.id === profile?.id
               && !invoiceAccepted
               && !["cancelled", "shipped", "delivered"].includes(order.status)
@@ -230,13 +244,13 @@ const Orders = ({ mode = "purchases" }: { mode?: "purchases" | "sales" }) => {
               <article className={`order-card ${expanded ? "is-expanded" : ""}`} key={order.id}>
                 <button aria-expanded={expanded} className="order-card-toggle" onClick={() => toggleOrder(order.id)} type="button">
                   <span className="order-card-identity"><span><b className="order-number">Order #{order.id}</b><span className={`order-status status-${order.status}`}>{statusLabels[order.status]}</span></span><small><CalendarDays size={14} /> {new Date(order.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}{(isVendorSales || isAdmin) && <> · <UserRound size={14} /> {order.customer.full_name}</>}</small></span>
-                  <span className="order-card-total"><small>{hasInvoice ? "Current quoted total" : "Tailoring service"}</small><strong>₹{order.total_amount.toLocaleString("en-IN")}</strong></span>
+                  <span className="order-card-total"><small>{hasInvoice ? "Current quoted total" : order.combined_order ? "Items + one delivery" : "Tailoring service"}</small><strong>₹{order.total_amount.toLocaleString("en-IN")}</strong></span>
                   <span className="open-order-button">{expanded ? "Close" : "Open order"}{expanded ? <ChevronUp size={17} /> : <ChevronDown size={17} />}</span>
                 </button>
 
                 {!expanded && (
                   <div className="order-card-summary">
-                    <div className="order-summary-designs">{order.order_items.slice(0, 3).map((item) => <span className="order-summary-image" key={item.id}>{item.design.image_url ? <ApiImage alt="" src={item.design.image_url} /> : <Package size={19} />}</span>)}<span><strong>{order.order_items.length} {order.order_items.length === 1 ? "design" : "designs"}</strong><small>{order.order_items.map((item) => item.design.title).join(", ")}</small></span></div>
+                    <div className="order-summary-designs">{order.order_items.slice(0, 2).map((item) => <span className="order-summary-image" key={`d-${item.id}`}>{item.design.image_url ? <ApiImage alt="" src={item.design.image_url} /> : <Package size={19} />}</span>)}{order.product_items.slice(0, Math.max(0, 3 - order.order_items.length)).map((item) => <span className="order-summary-image" key={`p-${item.id}`}>{item.product.image_url ? <ApiImage alt="" src={item.product.image_url} /> : <Package size={19} />}</span>)}<span><strong>{order.order_items.length + order.product_items.length} {(order.order_items.length + order.product_items.length) === 1 ? "item" : "items"} from one vendor</strong><small>{[...order.order_items.map((item) => item.design.title), ...order.product_items.map((item) => item.product.title)].join(", ")}</small></span></div>
                     <span><MapPin size={15} /> {order.delivery_address.city}, {order.delivery_address.state}</span>
                     {order.tracking_number && <span><Truck size={15} /> {order.tracking_number}</span>}
                   </div>
@@ -257,11 +271,17 @@ const Orders = ({ mode = "purchases" }: { mode?: "purchases" | "sales" }) => {
                       </div>
                     )}
 
+                    {isVendorSales && order.combined_order && order.status !== "cancelled" && order.invoice?.status !== "approved" && <div className="order-cancellation-bar"><div><XCircle size={18} /><span><strong>Cannot accept this combined order?</strong><small>Rejecting closes every design and product line and cancels the single delivery.</small></span></div><button className="button button-secondary danger-text" onClick={() => setRejectingOrder(order)} type="button">Reject order</button></div>}
+
+                    {order.combined_order && <CombinedOrderInvoice onUpdated={replaceOrder} order={order} profile={profile} />}
+
+                    {order.product_items.length > 0 && <section className="combined-product-lines"><header><Package size={19} /><div><strong>Products in this order</strong><small>Included in the single vendor invoice</small></div></header>{order.product_items.map((item) => <article key={item.id}><span className="order-summary-image">{item.product.image_url ? <ApiImage alt={item.product.title} src={item.product.image_url} /> : <Package size={18} />}</span><div><strong>{item.product.title}</strong><small>{item.quantity} {item.product.unit}{item.selected_size ? ` · ${item.selected_size}` : ""}</small></div><b>₹{item.merchandise_total.toLocaleString("en-IN")}</b><span className={`order-status status-${item.status}`}>{item.status}</span></article>)}</section>}
+
                     <div className="order-detail-items">
                       {order.order_items.map((item) => <OrderItemDetail item={item} key={item.id} onOrderUpdated={replaceOrder} onUpdated={replaceOrderItem} order={order} profile={profile} />)}
                     </div>
 
-                    <div className="delivery-detail"><strong>Delivery</strong><address>{order.delivery_address.recipient_name}, {order.delivery_address.street_address}, {order.delivery_address.city}, {order.delivery_address.state} {order.delivery_address.postal_code}</address></div>
+                    <div className="delivery-detail"><strong>{order.combined_order ? "One delivery for the complete order" : "Delivery"}</strong><address>{order.delivery_address.recipient_name}, {order.delivery_address.street_address}, {order.delivery_address.city}, {order.delivery_address.state} {order.delivery_address.postal_code}</address>{order.combined_order && order.deliveries[0] && <span>₹{order.deliveries[0].delivery_cost.toLocaleString("en-IN")} · {(order.deliveries[0].distance_meters / 1000).toFixed(1)} km</span>}</div>
 
                     {isAdmin && drafts[order.id] && (
                       <div className="order-admin-actions">
@@ -294,6 +314,7 @@ const Orders = ({ mode = "purchases" }: { mode?: "purchases" | "sales" }) => {
         />
       )}
       {cancellingOrder && <OrderCancellationDialog busy={busyId === cancellingOrder.id} confirmLabel="Cancel order" description="This cancels every tailoring item and its delivery. Vendors will be notified. Once any invoice is accepted, cancellation is permanently disabled." onCancel={() => setCancellingOrder(null)} onConfirm={(reason) => void cancelCustomerOrder(reason)} title={`Cancel order #${cancellingOrder.id}?`} />}
+      {rejectingOrder && <OrderCancellationDialog busy={busyId === rejectingOrder.id} confirmLabel="Reject order" description="This rejects every design and product in the combined order, restores product stock, and cancels its one delivery. The customer will see your reason." onCancel={() => setRejectingOrder(null)} onConfirm={(reason) => void rejectVendorOrder(reason)} title={`Reject order #${rejectingOrder.id}?`} />}
     </div>
   )
 }

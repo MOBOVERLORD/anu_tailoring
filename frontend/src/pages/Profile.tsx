@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import type { FormEvent } from "react"
 import {
   BellRing,
+  Camera,
   ChevronRight,
   CircleUserRound,
   Edit3,
@@ -20,6 +21,7 @@ import {
 import toast from "react-hot-toast"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { Dialog } from "@/components/Dialog"
+import { ApiImage } from "@/components/ApiImage"
 import { LocationCapture } from "@/components/LocationCapture"
 import { AppSelect } from "@/components/ui/AppSelect"
 import { api, getCurrentUser, updateCurrentUserCache } from "@/lib/api"
@@ -35,7 +37,7 @@ import type {
   UserProfile,
 } from "@/types/api"
 
-type Section = "details" | "pickup" | "measurements" | "addresses" | "activity"
+type Section = "details" | "shop" | "vendor-request" | "pickup" | "measurements" | "addresses" | "activity"
 type Gender = "women" | "men" | "unisex" | "kids"
 
 interface GarmentOption {
@@ -394,6 +396,8 @@ const Profile = () => {
   const [section, setSection] = useState<Section>("details")
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [profileDraft, setProfileDraft] = useState({ full_name: "", phone: "", location: "" })
+  const [shopDraft, setShopDraft] = useState({ shop_name: "", shop_description: "" })
+  const [vendorRequestDraft, setVendorRequestDraft] = useState({ shop_name: "", message: "" })
   const [vendorPickupDraft, setVendorPickupDraft] = useState<VendorPickupDraft>({
     pickup_address: "",
     pickup_latitude: null,
@@ -408,6 +412,9 @@ const Profile = () => {
   const [measurementDialog, setMeasurementDialog] = useState<MeasurementProfile | "new" | null>(null)
   const [addressDialog, setAddressDialog] = useState<DeliveryAddress | "new" | null>(null)
   const [savingProfile, setSavingProfile] = useState(false)
+  const [savingShop, setSavingShop] = useState(false)
+  const [savingVendorRequest, setSavingVendorRequest] = useState(false)
+  const [uploadingImage, setUploadingImage] = useState<"profile" | "logo" | null>(null)
   const [savingVendorPickup, setSavingVendorPickup] = useState(false)
   const [loading, setLoading] = useState(true)
   const profileContent = useRef<HTMLElement>(null)
@@ -416,7 +423,7 @@ const Profile = () => {
   useEffect(() => {
     const requestedSection = searchParams.get("section")
     setSection(
-      requestedSection === "pickup" || requestedSection === "measurements" || requestedSection === "addresses" || requestedSection === "activity"
+      requestedSection === "shop" || requestedSection === "vendor-request" || requestedSection === "pickup" || requestedSection === "measurements" || requestedSection === "addresses" || requestedSection === "activity"
         ? requestedSection
         : "details"
     )
@@ -424,17 +431,27 @@ const Profile = () => {
 
   useEffect(() => {
     Promise.all([
-      getCurrentUser(),
+      getCurrentUser(true),
       api<MeasurementProfile[]>("/api/measurements"),
       api<DeliveryAddress[]>("/api/addresses"),
       api<MeasurementCategory[]>("/api/measurements/categories"),
     ])
       .then(([user, userMeasurements, userAddresses, measurementCategories]) => {
         setProfile(user)
+        updateCurrentUserCache(user)
+        window.dispatchEvent(new Event("profile:changed"))
         setProfileDraft({
           full_name: user.full_name,
           phone: user.phone || "",
           location: user.location || "",
+        })
+        setShopDraft({
+          shop_name: user.shop_name || user.full_name,
+          shop_description: user.shop_description || "",
+        })
+        setVendorRequestDraft({
+          shop_name: user.vendor_request_shop_name || "",
+          message: user.vendor_request_message || "",
         })
         setVendorPickupDraft({
           pickup_address: user.vendor_pickup_address || "",
@@ -540,11 +557,75 @@ const Profile = () => {
       })
       setProfile(updated)
       updateCurrentUserCache(updated)
+      window.dispatchEvent(new Event("profile:changed"))
       toast.success("Personal details updated")
     } catch (error) {
       toast.error((error as Error).message)
     } finally {
       setSavingProfile(false)
+    }
+  }
+
+  const uploadAccountImage = async (kind: "profile" | "logo", files: FileList | null) => {
+    const file = files?.[0]
+    if (!file) return
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size <= 0 || file.size > 2 * 1024 * 1024) {
+      toast.error("Use a JPEG, PNG, or WebP image up to 2 MB")
+      return
+    }
+    setUploadingImage(kind)
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+      const updated = await api<UserProfile>(kind === "profile" ? "/api/media/profile-image" : "/api/media/vendor-logo", {
+        method: "POST",
+        body: formData,
+      })
+      setProfile(updated)
+      updateCurrentUserCache(updated)
+      window.dispatchEvent(new Event("profile:changed"))
+      toast.success(kind === "profile" ? "Profile photo updated" : "Shop logo updated")
+    } catch (error) {
+      toast.error((error as Error).message)
+    } finally {
+      setUploadingImage(null)
+    }
+  }
+
+  const saveShop = async (event: FormEvent) => {
+    event.preventDefault()
+    setSavingShop(true)
+    try {
+      const updated = await api<UserProfile>("/api/vendors/profile", {
+        method: "PUT",
+        body: JSON.stringify(shopDraft),
+      })
+      setProfile(updated)
+      updateCurrentUserCache(updated)
+      window.dispatchEvent(new Event("profile:changed"))
+      toast.success("Shop profile updated")
+    } catch (error) {
+      toast.error((error as Error).message)
+    } finally {
+      setSavingShop(false)
+    }
+  }
+
+  const submitVendorRequest = async (event: FormEvent) => {
+    event.preventDefault()
+    setSavingVendorRequest(true)
+    try {
+      const updated = await api<UserProfile>("/api/vendors/request", {
+        method: "POST",
+        body: JSON.stringify(vendorRequestDraft),
+      })
+      setProfile(updated)
+      updateCurrentUserCache(updated)
+      toast.success("Vendor request sent for review")
+    } catch (error) {
+      toast.error((error as Error).message)
+    } finally {
+      setSavingVendorRequest(false)
     }
   }
 
@@ -655,7 +736,20 @@ const Profile = () => {
 
   const navItems: Array<{ value: Section; label: string; mobileLabel: string; detail: string; icon: typeof UserRound }> = [
     { value: "details", label: "Personal details", mobileLabel: "Details", detail: "Name, phone & location", icon: UserRound },
+    ...(profile.role === "customer" ? [{
+      value: "vendor-request" as Section,
+      label: "Become a vendor",
+      mobileLabel: "Vendor",
+      detail: profile.vendor_request_status === "pending" ? "Request under review" : profile.vendor_request_status === "rejected" ? "Update and apply again" : "Open a Vastrivo shop",
+      icon: Store,
+    }] : []),
     ...(profile.role === "vendor" ? [{
+      value: "shop" as Section,
+      label: "Shop profile",
+      mobileLabel: "Shop",
+      detail: profile.shop_name || "Add shop details",
+      icon: Store,
+    }, {
       value: "pickup" as Section,
       label: "Workshop & pickup",
       mobileLabel: "Pickup",
@@ -679,7 +773,7 @@ const Profile = () => {
       <div className="profile-layout">
         <aside className="profile-sidebar">
           <div className="profile-summary">
-            <span className="avatar xlarge">{initials}</span>
+            <span className="avatar xlarge">{profile.profile_image_url ? <ApiImage alt={profile.full_name} src={profile.profile_image_url} /> : initials}</span>
             <div><strong>{profile.full_name}</strong><small>{profile.email}</small></div>
           </div>
           <nav aria-label="Profile sections">
@@ -704,8 +798,8 @@ const Profile = () => {
               </div>
               <form className="profile-form" onSubmit={saveProfile}>
                 <div className="profile-avatar-row">
-                  <span className="avatar xxlarge">{initials}</span>
-                  <div><strong>{profile.full_name}</strong><p>{profile.role.replaceAll("_", " ")} account · joined {new Date(profile.created_at).toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</p></div>
+                  <span className="avatar xxlarge">{profile.profile_image_url ? <ApiImage alt={profile.full_name} src={profile.profile_image_url} /> : initials}</span>
+                  <div><strong>{profile.full_name}</strong><p>{profile.role.replaceAll("_", " ")} account · joined {new Date(profile.created_at).toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</p><label className="button button-secondary profile-image-action"><Camera size={16} /> {uploadingImage === "profile" ? "Uploading…" : profile.profile_image_url ? "Change photo" : "Add profile photo"}<input accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingImage)} onChange={(event) => { void uploadAccountImage("profile", event.target.files); event.target.value = "" }} type="file" /></label><small>JPEG, PNG or WebP, up to 2 MB.</small></div>
                 </div>
                 <div className="form-grid">
                   <div className="field">
@@ -732,6 +826,32 @@ const Profile = () => {
                 <div className="form-actions">
                   <button className="button button-primary" disabled={savingProfile} type="submit"><Save size={17} /> {savingProfile ? "Saving…" : "Save changes"}</button>
                 </div>
+              </form>
+            </>
+          )}
+
+          {section === "vendor-request" && profile.role === "customer" && (
+            <>
+              <div className="section-heading"><div><p className="section-kicker">Sell & tailor on Vastrivo</p><h2>Become a vendor</h2><p>Tell us about your shop. An administrator will review the request before vendor tools are enabled.</p></div></div>
+              <form className="profile-form vendor-request-form" onSubmit={submitVendorRequest}>
+                {profile.vendor_request_status && (
+                  <div className={`vendor-request-status ${profile.vendor_request_status}`}><Store size={20} /><div><strong>{profile.vendor_request_status === "pending" ? "Request under review" : "Previous request needs changes"}</strong><p>{profile.vendor_request_status === "pending" ? "You’ll receive a notification when an administrator completes the review." : profile.vendor_request_review_comment || "Update the information below and apply again."}</p></div></div>
+                )}
+                <div className="field"><label htmlFor="vendor-request-shop">Proposed shop name</label><input disabled={profile.vendor_request_status === "pending"} id="vendor-request-shop" maxLength={150} minLength={2} onChange={(event) => setVendorRequestDraft({ ...vendorRequestDraft, shop_name: event.target.value })} placeholder="e.g. Meera Custom Tailors" required value={vendorRequestDraft.shop_name} /></div>
+                <div className="field"><label htmlFor="vendor-request-message">About your tailoring service <small>optional</small></label><textarea disabled={profile.vendor_request_status === "pending"} id="vendor-request-message" maxLength={2000} onChange={(event) => setVendorRequestDraft({ ...vendorRequestDraft, message: event.target.value })} placeholder="Garments you specialise in, experience, service area, and anything the reviewer should know" rows={5} value={vendorRequestDraft.message} /></div>
+                {profile.vendor_request_status !== "pending" && <div className="form-actions"><button className="button button-primary" disabled={savingVendorRequest} type="submit"><Store size={17} /> {savingVendorRequest ? "Sending…" : profile.vendor_request_status === "rejected" ? "Apply again" : "Request vendor access"}</button></div>}
+              </form>
+            </>
+          )}
+
+          {section === "shop" && profile.role === "vendor" && (
+            <>
+              <div className="section-heading"><div><p className="section-kicker">Public vendor identity</p><h2>Shop profile</h2><p>Your shop name and logo appear in the vendor directory and can be searched and saved by customers.</p></div></div>
+              <form className="profile-form" onSubmit={saveShop}>
+                <div className="shop-logo-editor"><span className="vendor-logo large">{profile.vendor_logo_url ? <ApiImage alt={`${profile.shop_name || profile.full_name} logo`} src={profile.vendor_logo_url} /> : <Store size={30} />}</span><div><strong>{profile.shop_name || "Add your shop identity"}</strong><p>Use a square logo with a clear mark or shop name.</p><label className="button button-secondary profile-image-action"><Camera size={16} /> {uploadingImage === "logo" ? "Uploading…" : profile.vendor_logo_url ? "Change logo" : "Add shop logo"}<input accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingImage)} onChange={(event) => { void uploadAccountImage("logo", event.target.files); event.target.value = "" }} type="file" /></label></div></div>
+                <div className="field"><label htmlFor="shop-name">Shop name</label><input id="shop-name" maxLength={150} minLength={2} onChange={(event) => setShopDraft({ ...shopDraft, shop_name: event.target.value })} required value={shopDraft.shop_name} /></div>
+                <div className="field"><label htmlFor="shop-description">Shop description</label><textarea id="shop-description" maxLength={2000} onChange={(event) => setShopDraft({ ...shopDraft, shop_description: event.target.value })} placeholder="Specialities, experience, garments and service area" rows={5} value={shopDraft.shop_description} /></div>
+                <div className="form-actions"><button className="button button-primary" disabled={savingShop} type="submit"><Save size={17} /> {savingShop ? "Saving…" : "Save shop profile"}</button></div>
               </form>
             </>
           )}

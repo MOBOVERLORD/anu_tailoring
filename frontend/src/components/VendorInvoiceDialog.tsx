@@ -23,8 +23,10 @@ const emptyLineItem = (): EditableLineItem => ({ name: "", description: "", quan
 
 export const VendorInvoiceDialog = ({ item, onClose, onUpdated }: VendorInvoiceDialogProps) => {
   const existing = item.invoice
+  const isCustomRequest = item.design.is_custom_request_template
   const customerProvidesCloth = item.cloth_source === "customer_provided"
   const [form, setForm] = useState({
+    service_amount: existing?.service_amount || item.price || 0,
     cloth_type: existing?.cloth_type || item.fabric_choice || "",
     cloth_requirement: existing?.cloth_requirement || "",
     cloth_cost: customerProvidesCloth ? 0 : existing?.cloth_cost || 0,
@@ -56,6 +58,7 @@ export const VendorInvoiceDialog = ({ item, onClose, onUpdated }: VendorInvoiceD
     try {
       const payload = {
         expected_revision: existing?.revision ?? null,
+        service_amount: isCustomRequest ? Number(form.service_amount) : null,
         cloth_type: form.cloth_type,
         cloth_requirement: form.cloth_requirement,
         cloth_cost: customerProvidesCloth ? 0 : Number(form.cloth_cost),
@@ -82,12 +85,13 @@ export const VendorInvoiceDialog = ({ item, onClose, onUpdated }: VendorInvoiceD
   }
 
   const additionalTotal = form.line_items.reduce((sum, line) => sum + Number(line.quantity) * Number(line.unit_price), 0)
-  const invoiceTotal = item.price + (customerProvidesCloth ? 0 : Number(form.cloth_cost)) + additionalTotal
+  const serviceAmount = isCustomRequest ? Number(form.service_amount) : item.price
+  const invoiceTotal = serviceAmount + (customerProvidesCloth ? 0 : Number(form.cloth_cost)) + additionalTotal
 
   return (
     <Dialog className="vendor-invoice-dialog" description="The customer has already selected who supplies the cloth. Delivery is calculated by the platform, so only add tailoring, cloth, and agreed product charges." onClose={onClose} title={existing ? `Edit invoice ${existing.invoice_number}` : "Create vendor invoice"}>
       <form className="dialog-form invoice-editor" onSubmit={(event) => submit(event, false)}>
-        <div className="invoice-service-banner"><FileText size={20} /><div><small>Tailoring service charge</small><strong>₹{item.price.toLocaleString("en-IN")}</strong><p>Carried from the design price and not treated as cloth or product cost.</p></div></div>
+        <div className="invoice-service-banner"><FileText size={20} /><div><small>Tailoring service charge</small>{isCustomRequest ? <div className="field invoice-custom-service"><label htmlFor="invoice-service-amount">Agreed tailoring charge (₹)</label><input id="invoice-service-amount" max={1_000_000} min={1} onChange={(event) => setForm({ ...form, service_amount: boundedNumber(event.target.value, 0, 1_000_000) })} required type="number" value={form.service_amount || ""} /></div> : <strong>₹{item.price.toLocaleString("en-IN")}</strong>}<p>{isCustomRequest ? "Set the service price agreed with the customer in chat before issuing the invoice." : "Carried from the design price and not treated as cloth or product cost."}</p></div></div>
 
         <section className="customer-cloth-decision"><Shirt size={20} /><div><small>Customer’s cloth choice</small><strong>{customerProvidesCloth ? "Customer provides the cloth" : "Vendor provides the cloth"}</strong><p>{customerProvidesCloth ? "Cloth cost is locked at ₹0. You must still give the exact cloth requirement." : "Quote the cloth cost here. After approval, attach the actual cloth bill before the customer pays."}</p></div></section>
 

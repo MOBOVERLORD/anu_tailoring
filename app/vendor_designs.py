@@ -46,7 +46,11 @@ async def _owned_design(
 ) -> Design:
     query = (
         select(Design)
-        .where(Design.id == design_id, Design.vendor_id == vendor.id)
+        .where(
+            Design.id == design_id,
+            Design.vendor_id == vendor.id,
+            Design.is_custom_request_template.is_(False),
+        )
         .options(selectinload(Design.images), selectinload(Design.vendor))
     )
     if for_update:
@@ -95,7 +99,10 @@ async def vendor_summary(
 ):
     result = await db.execute(
         select(Design.status, func.count(Design.id))
-        .where(Design.vendor_id == vendor.id)
+        .where(
+            Design.vendor_id == vendor.id,
+            Design.is_custom_request_template.is_(False),
+        )
         .group_by(Design.status)
     )
     counts = {row[0]: row[1] for row in result.all()}
@@ -114,7 +121,10 @@ async def list_vendor_designs(
 ):
     result = await db.execute(
         select(Design)
-        .where(Design.vendor_id == vendor.id)
+        .where(
+            Design.vendor_id == vendor.id,
+            Design.is_custom_request_template.is_(False),
+        )
         .options(selectinload(Design.images), selectinload(Design.vendor))
         .order_by(Design.updated_at.desc())
     )

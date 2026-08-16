@@ -128,6 +128,14 @@ def product_image_object_name(
     return f"vendors/{vendor_id}/products/{product_id}/{image_key}{extension}"
 
 
+def profile_image_object_name(user_id: int, image_key: str, extension: str) -> str:
+    return f"users/{user_id}/profile/{image_key}{extension}"
+
+
+def vendor_logo_object_name(vendor_id: int, image_key: str, extension: str) -> str:
+    return f"vendors/{vendor_id}/profile/logo/{image_key}{extension}"
+
+
 def invoice_attachment_object_name(
     vendor_id: int,
     order_id: int,
