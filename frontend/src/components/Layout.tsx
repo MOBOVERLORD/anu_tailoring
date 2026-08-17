@@ -49,6 +49,12 @@ const Layout = () => {
       "/vendor/sales-orders": "Vendor sales orders",
       "/admin": "Administration",
       "/delivery-agent": "Assigned deliveries",
+      "/contact": "Contact us",
+      "/pricing": "Pricing details",
+      "/shipping": "Shipping policy",
+      "/cancellation-refunds": "Cancellation & refunds",
+      "/privacy": "Privacy policy",
+      "/terms": "Terms and conditions",
     }
     document.title = location.pathname === "/" && !isAuthenticated
       ? "Vastrivo | Custom Tailoring & Clothing Marketplace"
@@ -56,13 +62,20 @@ const Layout = () => {
     const robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]')
     const description = document.querySelector<HTMLMetaElement>('meta[name="description"]')
     const canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')
-    const isPublicHome = location.pathname === "/" && !isAuthenticated
-    if (robots) robots.content = isPublicHome ? "index, follow" : "noindex, nofollow"
-    if (description) description.content = isPublicHome
-      ? "Discover custom tailoring, made-to-measure clothing, verified tailoring vendors, and ready-to-buy garments for women and men on Vastrivo."
-      : "Manage your Vastrivo tailoring, clothing, orders, measurements, and account."
-    if (canonical) canonical.href = isPublicHome
-      ? "https://vastrivo.in/"
+    const publicDescriptions: Record<string, string> = {
+      "/": "Discover custom tailoring, made-to-measure clothing, verified tailoring vendors, and ready-to-buy garments for women and men on Vastrivo.",
+      "/contact": "Contact Vastrivo for help with tailoring orders, clothing purchases, payments, refunds, and delivery.",
+      "/pricing": "Understand Vastrivo tailoring, product, cloth, invoice, and delivery pricing before placing an order.",
+      "/shipping": "Read Vastrivo's shipping, delivery, tracking, vendor delivery, and self-pickup policy.",
+      "/cancellation-refunds": "Read Vastrivo's order cancellation and Razorpay refund policy.",
+      "/privacy": "Read how Vastrivo processes account, measurement, address, payment, and order information.",
+      "/terms": "Read the terms governing Vastrivo customers, vendors, delivery agents, orders, and payments.",
+    }
+    const publicDescription = publicDescriptions[location.pathname]
+    if (robots) robots.content = publicDescription ? "index, follow" : "noindex, nofollow"
+    if (description) description.content = publicDescription || "Manage your Vastrivo tailoring, clothing, orders, measurements, and account."
+    if (canonical) canonical.href = publicDescription
+      ? `https://vastrivo.in${location.pathname === "/" ? "/" : location.pathname}`
       : `${window.location.origin}${location.pathname}`
   }, [isAuthenticated, location.pathname])
 
@@ -350,6 +363,7 @@ const Layout = () => {
       <main className="app-main" id="main-content">
         <Outlet />
       </main>
+      {!isAuthenticated && <footer className="public-footer"><div><Brand /><p>Custom tailoring, clothing, secure payments, and delivery coordination in one marketplace.</p></div><nav aria-label="Business and policy links"><Link to="/contact">Contact</Link><Link to="/pricing">Pricing</Link><Link to="/shipping">Shipping</Link><Link to="/cancellation-refunds">Cancellation & refunds</Link><Link to="/privacy">Privacy</Link><Link to="/terms">Terms</Link></nav><small>© {new Date().getFullYear()} Vastrivo. All rights reserved.</small></footer>}
       {isAuthenticated && profile && (
         <nav aria-label="Mobile navigation" className="mobile-bottom-nav">
           {profile.role === "delivery_agent" ? <>

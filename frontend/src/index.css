@@ -8003,6 +8003,473 @@ a.map-attribution {
   }
 }
 
+.payment-view-tabs {
+  display: inline-flex;
+  gap: 5px;
+  padding: 5px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-soft);
+}
+
+.payment-view-tabs button {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  padding: 9px 13px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-soft);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.payment-view-tabs button.active {
+  background: var(--surface);
+  color: var(--brand-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.payment-view-tabs button span {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  font-size: 11px;
+}
+
+.payment-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 210px;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.payment-admin-list {
+  display: grid;
+  gap: 15px;
+}
+
+.payment-admin-card,
+.settlement-admin-card {
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.payment-admin-card > header,
+.settlement-admin-card > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 15px;
+  align-items: flex-start;
+}
+
+.payment-admin-card header h3,
+.settlement-admin-card header h3 {
+  display: inline;
+  margin: 0 8px;
+}
+
+.payment-admin-card header small,
+.settlement-admin-card header small {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-soft);
+}
+
+.payment-admin-card header > strong,
+.settlement-admin-card header > strong {
+  color: var(--brand);
+  font-size: 22px;
+}
+
+.payment-state {
+  display: inline-flex;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--text-soft);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.payment-state.state-captured,
+.payment-state.state-paid {
+  background: color-mix(in srgb, var(--success) 15%, var(--surface));
+  color: var(--success);
+}
+
+.payment-state.state-refunded,
+.payment-state.state-cancelled {
+  background: var(--surface-soft);
+  color: var(--text-soft);
+}
+
+.payment-state.state-failed,
+.payment-state.state-refund_failed,
+.payment-state.state-recovery_required {
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  color: var(--danger);
+}
+
+.payment-state.state-refund_pending,
+.payment-state.state-partially_refunded,
+.payment-state.state-held {
+  background: var(--brand-soft);
+  color: var(--brand-strong);
+}
+
+.payment-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.payment-metrics > span,
+.payment-reference-row > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.payment-metrics small,
+.payment-reference-row small {
+  color: var(--text-soft);
+}
+
+.payment-reference-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.payment-reference-row > span {
+  flex: 1 1 240px;
+}
+
+.payment-reference-row code {
+  overflow: hidden;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payment-failure,
+.payment-read-only,
+.refund-warning {
+  display: flex;
+  gap: 9px;
+  align-items: flex-start;
+  padding: 12px;
+  margin: 12px 0 0;
+  border: 1px solid color-mix(in srgb, var(--danger) 25%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--danger) 7%, var(--surface));
+  color: var(--danger);
+}
+
+.payment-read-only {
+  border-color: var(--border);
+  background: var(--surface-soft);
+  color: var(--text-soft);
+}
+
+.refund-warning p {
+  margin: 0;
+}
+
+.payment-refund-button {
+  margin-top: 12px;
+}
+
+.settlement-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.settlement-notes {
+  grid-column: 1 / -1;
+}
+
+.settlement-form > .button {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
+@media (max-width: 760px) {
+  .payment-toolbar,
+  .payment-metrics,
+  .settlement-form {
+    grid-template-columns: 1fr;
+  }
+
+  .payment-view-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .payment-view-tabs button {
+    justify-content: center;
+  }
+
+  .payment-admin-card > header,
+  .settlement-admin-card > header {
+    flex-direction: column;
+  }
+
+  .settlement-notes,
+  .settlement-form > .button {
+    grid-column: auto;
+    width: 100%;
+  }
+}
+
+.public-policy-page {
+  width: min(1180px, calc(100% - 40px));
+  margin: 36px auto 72px;
+}
+
+.policy-hero {
+  overflow: hidden;
+  padding: clamp(32px, 6vw, 66px);
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  background: radial-gradient(circle at 88% 18%, var(--brand-soft) 0 9%, transparent 9.5%), linear-gradient(135deg, var(--surface), var(--surface-soft));
+}
+
+.policy-hero > div {
+  max-width: 780px;
+}
+
+.policy-hero h1 {
+  margin: 8px 0 12px;
+  font-size: clamp(36px, 5vw, 66px);
+  line-height: 1;
+}
+
+.policy-hero p:not(.eyebrow) {
+  max-width: 680px;
+  margin: 0 0 18px;
+  color: var(--text-soft);
+  font-size: clamp(16px, 2vw, 19px);
+}
+
+.policy-hero small {
+  color: var(--text-soft);
+}
+
+.policy-layout {
+  display: grid;
+  grid-template-columns: 245px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+  margin-top: 28px;
+}
+
+.policy-layout > aside {
+  position: sticky;
+  top: calc(var(--header-height) + 24px);
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+}
+
+.policy-layout aside nav {
+  display: grid;
+  gap: 3px;
+}
+
+.policy-layout aside nav a {
+  padding: 9px 10px;
+  border-radius: 9px;
+  color: var(--text-soft);
+  font-weight: 700;
+}
+
+.policy-layout aside nav a:hover {
+  background: var(--surface-soft);
+  color: var(--brand-strong);
+}
+
+.policy-layout aside > div {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.policy-layout aside > div svg {
+  flex: 0 0 auto;
+  color: var(--brand);
+}
+
+.policy-content {
+  display: grid;
+  gap: 18px;
+}
+
+.policy-content > section,
+.policy-highlight {
+  padding: clamp(22px, 4vw, 36px);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+}
+
+.policy-content h2 {
+  margin: 0 0 12px;
+  font-size: clamp(22px, 3vw, 30px);
+}
+
+.policy-content h3 {
+  margin: 10px 0 7px;
+  font-size: 17px;
+}
+
+.policy-content p,
+.policy-content li {
+  color: var(--text-soft);
+  line-height: 1.75;
+}
+
+.policy-content ul {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 22px;
+}
+
+.policy-content a {
+  color: var(--brand-strong);
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.policy-highlight {
+  display: flex;
+  gap: 14px;
+  border-color: color-mix(in srgb, var(--brand) 42%, var(--border));
+  background: var(--brand-soft);
+}
+
+.policy-highlight > svg {
+  flex: 0 0 auto;
+  color: var(--brand);
+}
+
+.policy-highlight p,
+.policy-highlight small {
+  display: block;
+  margin: 5px 0 0;
+}
+
+.policy-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.policy-card-grid article {
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-soft);
+}
+
+.policy-card-grid article > svg {
+  color: var(--brand);
+}
+
+.public-footer {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 24px 48px;
+  align-items: start;
+  padding: 38px max(24px, calc((100vw - 1180px) / 2));
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.public-footer p {
+  max-width: 480px;
+  margin: 12px 0 0;
+  color: var(--text-soft);
+}
+
+.public-footer nav {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 10px 26px;
+}
+
+.public-footer nav a {
+  color: var(--text-soft);
+  font-weight: 700;
+}
+
+.public-footer nav a:hover {
+  color: var(--brand-strong);
+}
+
+.public-footer > small {
+  grid-column: 1 / -1;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  color: var(--text-soft);
+}
+
+@media (max-width: 760px) {
+  .public-policy-page {
+    width: min(100% - 24px, 1180px);
+    margin-top: 14px;
+  }
+
+  .policy-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .policy-layout > aside {
+    position: static;
+  }
+
+  .policy-layout aside nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .policy-card-grid,
+  .public-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .public-footer nav {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

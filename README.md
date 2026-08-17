@@ -224,8 +224,9 @@ The repository is ready for Google Cloud Run:
    - A secret containing the JWT signing key.
    - A secret containing the restricted Google Maps Platform API key.
    - A secret containing the Resend sending API key.
-   - Separate secrets containing the Razorpay Key ID and Key Secret. Use Test
-     Mode keys outside production and rotate any key that has been shared.
+   - Separate secrets containing the Razorpay Key ID, Key Secret, and Webhook
+     Secret. The webhook secret must be a different high-entropy value. Use
+     Test Mode keys outside production and rotate any key that has been shared.
 
    The database URL should use the async PostgreSQL driver and URL-encode any
    special characters in the password:
@@ -249,7 +250,7 @@ $env:GCP_DESIGN_BUCKET="YOUR_PRIVATE_DESIGN_BUCKET"
 $env:GCP_SERVICE_ACCOUNT="YOUR_RUNTIME_SERVICE_ACCOUNT_EMAIL"
 
 .\deploy-gcp.cmd `
-  --set-secrets=DATABASE_URL=YOUR_DATABASE_SECRET:latest,SECRET_KEY=YOUR_JWT_SECRET:latest,GOOGLE_MAPS_API_KEY=YOUR_MAPS_KEY_SECRET:latest,RAZORPAY_KEY_ID=YOUR_RAZORPAY_KEY_ID_SECRET:latest,RAZORPAY_KEY_SECRET=YOUR_RAZORPAY_KEY_SECRET_SECRET:latest
+  --set-secrets=DATABASE_URL=YOUR_DATABASE_SECRET:latest,SECRET_KEY=YOUR_JWT_SECRET:latest,GOOGLE_MAPS_API_KEY=YOUR_MAPS_KEY_SECRET:latest,RAZORPAY_KEY_ID=YOUR_RAZORPAY_KEY_ID_SECRET:latest,RAZORPAY_KEY_SECRET=YOUR_RAZORPAY_KEY_SECRET_SECRET:latest,RAZORPAY_WEBHOOK_SECRET=YOUR_RAZORPAY_WEBHOOK_SECRET:latest
 ```
 
 The command builds from the repository `Dockerfile`, deploys the Cloud Run
@@ -268,6 +269,44 @@ npm.cmd run deploy:gcp
 ```
 
 Use `.\deploy-gcp.cmd --help` to see the supported environment variables.
+
+### Razorpay production activation
+
+The checkout, signature verification, payment ledger, refunds, and vendor
+settlement records are implemented. Before accepting live money:
+
+1. Complete Razorpay KYC and submit `https://vastrivo.in` under **Account &
+   Settings → Business website details**. The public Contact, Pricing,
+   Shipping, Cancellation & refunds, Privacy, and Terms pages are linked in
+   the unauthenticated footer and sitemap. Before submission, set the Cloud Run
+   environment variables `BUSINESS_LEGAL_NAME`, `BUSINESS_ADDRESS`,
+   `SUPPORT_PHONE`, and `VENDOR_CONTACT_EMAIL` to the real registered business
+   and support details shown on those pages.
+2. In **Live Mode**, generate a new Key ID and Key Secret. Put them in the two
+   Secret Manager secrets mapped above. Never add them to a `VITE_` variable.
+3. Enable automatic payment capture in Razorpay Dashboard. The backend also
+   fetches a returned payment and captures an authorised payment when needed,
+   but fulfilment proceeds only after Razorpay reports `captured`.
+4. Under **Account & Settings → Webhooks**, create an active webhook:
+
+   ```text
+   https://vastrivo.in/api/payments/razorpay/webhook
+   ```
+
+   Subscribe to `payment.captured`, `payment.failed`, `order.paid`,
+   `refund.created`, `refund.processed`, and `refund.failed`. Set a new webhook
+   secret and store the exact same value in the `RAZORPAY_WEBHOOK_SECRET`
+   Secret Manager secret. The endpoint validates the raw request signature,
+   deduplicates `X-Razorpay-Event-Id`, and safely accepts out-of-order events.
+5. Make one small live payment and verify all three records before opening the
+   service broadly: the Razorpay payment is **captured**, the Vastrivo Admin →
+   Payments transaction is **captured**, and a pending vendor settlement was
+   created. Test a refund while the transaction value is still small.
+
+The vendor settlement screen is an internal manual payout ledger. Customer
+payments settle to Vastrivo's primary Razorpay account. Do not mark a vendor
+settlement paid until the bank transfer reference is available. Automated
+splitting requires separate approval for Razorpay Route and linked accounts.
 
 Order chat uses authenticated WebSockets. The deployment command sets Cloud
 Run's request timeout to 60 minutes and enables best-effort session affinity.

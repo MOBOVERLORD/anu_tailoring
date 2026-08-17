@@ -17,6 +17,7 @@ import Cart from "./pages/Cart"
 import ForgotPassword from "./pages/ForgotPassword"
 import ResetPassword from "./pages/ResetPassword"
 import DeliveryAgentWorkspace from "./pages/DeliveryAgentWorkspace"
+import PublicInfo from "./pages/PublicInfo"
 import { getAccessToken, getCurrentUser, onAuthChange } from "./lib/api"
 import type { UserProfile } from "./types/api"
 import { CartProvider } from "./context/CartContext"
@@ -84,6 +85,12 @@ function App() {
           <Route path="register" element={<Register />} />
           <Route path="forgot-password" element={<ForgotPassword />} />
           <Route path="reset-password" element={<ResetPassword />} />
+          <Route path="contact" element={<PublicInfo />} />
+          <Route path="pricing" element={<PublicInfo />} />
+          <Route path="shipping" element={<PublicInfo />} />
+          <Route path="cancellation-refunds" element={<PublicInfo />} />
+          <Route path="privacy" element={<PublicInfo />} />
+          <Route path="terms" element={<PublicInfo />} />
           <Route path="profile" element={<RequireAuth><Profile /></RequireAuth>} />
           <Route path="orders" element={<RequireAuth><Orders /></RequireAuth>} />
           <Route path="shop" element={<RequireAuth><Shop /></RequireAuth>} />

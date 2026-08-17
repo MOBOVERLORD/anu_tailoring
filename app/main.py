@@ -535,6 +535,10 @@ async def public_app_config():
     """Return the small allowlist of non-secret settings used before sign-in."""
     return {
         "vendor_contact_email": str(settings.VENDOR_CONTACT_EMAIL),
+        "support_email": str(settings.VENDOR_CONTACT_EMAIL),
+        "business_legal_name": settings.BUSINESS_LEGAL_NAME,
+        "business_address": settings.BUSINESS_ADDRESS,
+        "support_phone": settings.SUPPORT_PHONE,
     }
 
 
@@ -542,12 +546,17 @@ async def public_app_config():
 async def sitemap_xml():
     """Serve the sitemap before the SPA fallback can handle this path."""
     canonical_root = settings.PUBLIC_APP_URL.rstrip("/")
+    public_paths = ("/", "/contact", "/pricing", "/shipping", "/cancellation-refunds", "/privacy", "/terms")
+    urls = "".join(
+        "  <url>\n"
+        f"    <loc>{canonical_root}{path}</loc>\n"
+        "  </url>\n"
+        for path in public_paths
+    )
     content = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-        "  <url>\n"
-        f"    <loc>{canonical_root}/</loc>\n"
-        "  </url>\n"
+        f"{urls}"
         "</urlset>\n"
     )
     return Response(

@@ -730,6 +730,29 @@ The presets follow Indian vocational tailoring material rather than one universa
   loading, persisted create/verify/paid-state workflow with a fake provider, existing
   order-invoice workflow, frontend lint, and the Vite production build.
 
+## Razorpay production readiness
+
+- Added public, mobile-responsive Contact, Pricing, Shipping, Cancellation & refunds,
+  Privacy, and Terms pages. They remain available without sign-in, are linked from the
+  public footer, receive indexable canonical metadata, and are included in `sitemap.xml`.
+- Added a normalized payment ledger for provider order/payment/refund IDs, customer and
+  vendor ownership, cloth/final stages, captured amounts, failures, and cumulative refunds.
+- Added a signed public Razorpay webhook endpoint. It verifies the HMAC against the raw
+  request body, limits payload size, deduplicates `X-Razorpay-Event-Id`, records processing
+  results, tolerates out-of-order events, and reconciles captured, failed, and refund events.
+- Added Admin → Payments with searchable transaction and vendor-settlement views. Only a
+  super administrator can initiate source refunds or change payout records; paid settlements
+  require a bank/payout reference.
+- Captured payments automatically create pending manual vendor-settlement records. Platform
+  delivery is excluded from vendor payable value, refunds hold or reduce unpaid settlements,
+  and refunds after payout are flagged for recovery review. This ledger does not claim to
+  perform an automatic bank transfer or Razorpay Route transfer.
+- Added customer/vendor notifications for captured payments and refund progress, GCP Secret
+  Manager guidance for the separate webhook secret, and the exact live webhook events/URL.
+- Expanded the offline Razorpay verifier to cover the payment ledger, settlement creation,
+  full refund processing, signature validation, and a delayed captured webhook that must not
+  overwrite an already-refunded transaction.
+
 ## Vendor tailoring progress controls
 
 - Hide the `Tailoring status is unlocked` guidance once every active tailoring item is completed, so shipping and delivered orders no longer show a stale action prompt.
@@ -843,8 +866,9 @@ The presets follow Indian vocational tailoring material rather than one universa
    vendor business profiles, admin audit logs, and forced temporary-password change.
 5. Move persisted monetary columns from FLOAT to PostgreSQL NUMERIC, generate
    image thumbnails, and add server-side catalog/order search before large-scale use.
-6. Add Razorpay webhooks, payment reconciliation, refunds, and production audit
-   reporting before accepting live payments.
+6. Complete Razorpay KYC/live-mode activation, configure the production webhook
+   secret in Secret Manager, and run a small live payment/refund smoke test before
+   accepting customer payments broadly.
 
 ## Resume prompt
 

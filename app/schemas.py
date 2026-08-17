@@ -838,6 +838,65 @@ class RazorpayPaymentVerificationResponse(BaseModel):
     message: str
 
 
+class AdminRefundRequest(BaseModel):
+    amount: Optional[float] = Field(default=None, gt=0, le=10_000_000)
+    reason: str = Field(min_length=5, max_length=500)
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_refund_reason(cls, v: str) -> str:
+        return " ".join(v.split())
+
+
+class PaymentTransactionResponse(BaseModel):
+    id: int
+    provider_order_id: str
+    provider_payment_id: Optional[str]
+    provider_refund_id: Optional[str]
+    order_id: int
+    invoice_kind: str
+    payment_stage: str
+    customer_name: str
+    vendor_name: str
+    amount: float
+    amount_refunded: float
+    currency: str
+    status: str
+    failure_reason: Optional[str]
+    captured_at: Optional[datetime]
+    refunded_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+
+
+class VendorSettlementResponse(BaseModel):
+    id: int
+    payment_transaction_id: int
+    order_id: int
+    vendor_id: int
+    vendor_name: str
+    payment_stage: str
+    provider_payment_id: Optional[str]
+    gross_amount: float
+    platform_delivery_amount: float
+    platform_fee_amount: float
+    payable_amount: float
+    status: str
+    payout_reference: Optional[str]
+    notes: Optional[str]
+    paid_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+
+
+class VendorSettlementUpdate(BaseModel):
+    status: Literal["pending", "held", "paid", "cancelled", "recovery_required"]
+    payable_amount: float = Field(ge=0, le=10_000_000)
+    platform_fee_amount: float = Field(default=0, ge=0, le=10_000_000)
+    payout_reference: Optional[str] = Field(default=None, max_length=150)
+    notes: Optional[str] = Field(default=None, max_length=2000)
+
+
 class OrderCommentCreate(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
 

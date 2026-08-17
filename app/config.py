@@ -67,6 +67,11 @@ class Settings(BaseSettings):
     # Safe to expose through the public UI config endpoint. This is the support
     # contact shown to prospective vendors, not a provider credential.
     VENDOR_CONTACT_EMAIL: EmailStr = "vendors@vastrivo.com"
+    # Public business identity shown on the policy/contact pages. Configure the
+    # registered entity and correspondence address before Razorpay review.
+    BUSINESS_LEGAL_NAME: str = "Vastrivo"
+    BUSINESS_ADDRESS: Optional[str] = None
+    SUPPORT_PHONE: Optional[str] = None
 
     # Transactional email. Use `console` only for local development. On Cloud
     # Run, keep RESEND_API_KEY in Secret Manager and use `resend`.
@@ -96,6 +101,9 @@ class Settings(BaseSettings):
     # by Checkout.js. Use Test Mode locally and Secret Manager in Cloud Run.
     RAZORPAY_KEY_ID: Optional[str] = None
     RAZORPAY_KEY_SECRET: Optional[str] = None
+    # Created separately in Razorpay Dashboard. It is not an API key and must
+    # be used only to authenticate the raw webhook request body.
+    RAZORPAY_WEBHOOK_SECRET: Optional[str] = None
     RAZORPAY_CURRENCY: str = "INR"
     RAZORPAY_HTTP_TIMEOUT_SECONDS: float = 10.0
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   Check,
+  Banknote,
   Edit3,
   ImageIcon,
   LoaderCircle,
@@ -28,11 +29,12 @@ import { ImageLightbox } from "@/components/ImageLightbox"
 import { LocationCapture } from "@/components/LocationCapture"
 import MeasurementCategoriesAdmin from "@/components/MeasurementCategoriesAdmin"
 import { ProductApprovals } from "@/components/ProductApprovals"
+import { PaymentOperations } from "@/components/PaymentOperations"
 import { AppSelect } from "@/components/ui/AppSelect"
 import { api, getCurrentUser } from "@/lib/api"
 import type { Design, DesignImage, UserProfile } from "@/types/api"
 
-type AdminSection = "reviews" | "products" | "vendor-requests" | "vendors" | "customers" | "staff" | "measurements" | "delivery"
+type AdminSection = "reviews" | "products" | "vendor-requests" | "vendors" | "customers" | "staff" | "measurements" | "delivery" | "payments"
 type AccountFilter = "all" | "active" | "inactive"
 type ManageableRole = "customer" | "vendor" | "admin" | "delivery_agent"
 const ADMIN_CATEGORY_OPTIONS = [{ value: "all", label: "All categories" }, { value: "women", label: "Women" }, { value: "men", label: "Men" }, { value: "unisex", label: "Unisex" }, { value: "kids", label: "Kids" }]
@@ -337,6 +339,9 @@ const AdminWorkspace = () => {
         <button className={section === "delivery" ? "active" : ""} onClick={() => setSection("delivery")} type="button">
           <Truck size={17} /> Delivery
         </button>
+        <button className={section === "payments" ? "active" : ""} onClick={() => setSection("payments")} type="button">
+          <Banknote size={17} /> Payments
+        </button>
       </nav>
 
       {section === "reviews" ? (
@@ -403,6 +408,8 @@ const AdminWorkspace = () => {
         <MeasurementCategoriesAdmin />
       ) : section === "delivery" ? (
         <DeliveryManagement isSuperAdmin={isSuperAdmin} />
+      ) : section === "payments" ? (
+        <PaymentOperations isSuperAdmin={isSuperAdmin} />
       ) : (
         <section className="admin-panel">
           <div className="admin-panel-heading">

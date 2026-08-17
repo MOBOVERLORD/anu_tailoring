@@ -732,6 +732,79 @@ class VendorInvoiceLineItem(Base):
     invoice: Mapped["VendorInvoice"] = relationship(back_populates="line_items")
 
 
+class PaymentTransaction(Base):
+    """Provider-neutral payment ledger used for reconciliation and refunds."""
+
+    __tablename__ = "payment_transactions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    provider: Mapped[str] = mapped_column(String(30), default="razorpay", server_default="razorpay")
+    provider_order_id: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    provider_payment_id: Mapped[Optional[str]] = mapped_column(String(100), unique=True, nullable=True, index=True)
+    provider_refund_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    scope: Mapped[str] = mapped_column(String(40))
+    resource_id: Mapped[int] = mapped_column(Integer)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="RESTRICT"), index=True)
+    invoice_kind: Mapped[str] = mapped_column(String(20))
+    invoice_id: Mapped[int] = mapped_column(Integer, index=True)
+    payment_stage: Mapped[str] = mapped_column(String(20), index=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    vendor_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    amount_paise: Mapped[int] = mapped_column(Integer)
+    amount_refunded_paise: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    currency: Mapped[str] = mapped_column(String(3), default="INR", server_default="INR")
+    status: Mapped[str] = mapped_column(String(30), default="created", server_default="created", index=True)
+    failure_code: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    failure_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    captured_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    refunded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+class PaymentWebhookEvent(Base):
+    """Minimal idempotency and audit record for a provider webhook delivery."""
+
+    __tablename__ = "payment_webhook_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    provider: Mapped[str] = mapped_column(String(30), default="razorpay", server_default="razorpay")
+    provider_event_id: Mapped[str] = mapped_column(String(150), unique=True, index=True)
+    event_type: Mapped[str] = mapped_column(String(100), index=True)
+    provider_order_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    provider_payment_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="received", server_default="received", index=True)
+    error_message: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    processed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class VendorSettlement(Base):
+    """Internal payout ledger; no automatic transfer occurs without Route."""
+
+    __tablename__ = "vendor_settlements"
+    __table_args__ = (
+        UniqueConstraint("payment_transaction_id", name="uq_vendor_settlement_payment_transaction"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    payment_transaction_id: Mapped[int] = mapped_column(
+        ForeignKey("payment_transactions.id", ondelete="RESTRICT"), index=True
+    )
+    vendor_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="RESTRICT"), index=True)
+    gross_amount_paise: Mapped[int] = mapped_column(Integer)
+    platform_delivery_paise: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    platform_fee_paise: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    payable_amount_paise: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(30), default="pending", server_default="pending", index=True)
+    payout_reference: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class OrderComment(Base):
     __tablename__ = "order_comments"
 

@@ -446,3 +446,44 @@ export interface ProductOrderPage {
   limit: number
   offset: number
 }
+
+export interface PaymentTransaction {
+  id: number
+  provider_order_id: string
+  provider_payment_id: string | null
+  provider_refund_id: string | null
+  order_id: number
+  invoice_kind: "combined" | "vendor"
+  payment_stage: "cloth" | "final"
+  customer_name: string
+  vendor_name: string
+  amount: number
+  amount_refunded: number
+  currency: string
+  status: string
+  failure_reason: string | null
+  captured_at: string | null
+  refunded_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface VendorSettlement {
+  id: number
+  payment_transaction_id: number
+  order_id: number
+  vendor_id: number
+  vendor_name: string
+  payment_stage: "cloth" | "final"
+  provider_payment_id: string | null
+  gross_amount: number
+  platform_delivery_amount: number
+  platform_fee_amount: number
+  payable_amount: number
+  status: "pending" | "held" | "paid" | "cancelled" | "recovery_required"
+  payout_reference: string | null
+  notes: string | null
+  paid_at: string | null
+  created_at: string
+  updated_at: string
+}
