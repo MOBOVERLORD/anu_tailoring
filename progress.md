@@ -863,6 +863,149 @@ The presets follow Indian vocational tailoring material rather than one universa
 - `Custom order` now appears only when that vendor is able to accept one. Empty
   design messaging is neutral when custom ordering is unavailable.
 
+## Android and iOS application roadmap (planned, not started)
+
+### Direction and scope
+
+- Build one TypeScript mobile application in a new `mobile/` workspace using Expo,
+  React Native, Expo Router, and EAS Build. Use development builds because Razorpay
+  and other native SDKs are not an Expo Go-only workflow.
+- Keep FastAPI, PostgreSQL, GCS, Razorpay, Resend, routing, and the existing WebSocket
+  chat as the shared backend. The website and mobile app must use the same accounts,
+  catalog, orders, payments, notifications, and delivery records.
+- Reuse API types, validation rules, formatting helpers, and business state machines in
+  a shared package. Do not attempt to reuse DOM components or the current CSS; create
+  accessible native screens that preserve the Vastrivo visual system and both themes.
+- Ship customer, vendor, and delivery-agent experiences in one app with role-aware
+  navigation. Keep large super-admin tables, moderation, configuration, refunds, and
+  settlement operations web-first for the initial store release; add focused mobile
+  approval/dispatch actions later if operationally necessary.
+- Tentative application identifiers are `in.vastrivo.app` for Android and iOS, with
+  `vastrivo://` deep links plus verified `https://vastrivo.in/...` app/universal links.
+  Confirm identifiers before the first store build because changing them after release
+  creates a separate app.
+
+### Phase 0 - make the backend a stable mobile platform
+
+1. Introduce versioned `/api/v1` routes or a compatibility layer before a store release,
+   publish the OpenAPI contract, and generate a typed client shared by web and mobile.
+2. Add dedicated mobile session endpoints. Continue using 10-minute access tokens, but
+   return rotating, device-bound refresh credentials for encrypted native storage rather
+   than depending on a browser-only HTTP-only cookie. Track device/session name, last use,
+   revocation, and logout-all; never place tokens in AsyncStorage.
+3. Add device-registration endpoints for APNs/FCM/Expo push tokens, per-device notification
+   preferences, token rotation, and deletion on logout. Notifications remain persisted in
+   the existing activity log; push is only a delivery channel.
+4. Standardize pagination, server-side filtering, image thumbnail variants, upload retry/
+   idempotency keys, structured API errors, request correlation IDs, and mobile-safe rate
+   limits. Complete Alembic migrations and change money columns to NUMERIC first.
+5. Add mobile configuration discovery for minimum supported version, maintenance mode,
+   public API origin, feature flags, policy URLs, and forced/optional upgrade messages.
+
+### Phase 1 - mobile foundation
+
+1. Create `mobile/` with development, preview, and production EAS profiles; separate test
+   and production API/Razorpay configuration; no secrets in Expo public configuration.
+2. Build the shared design system: Manrope/Fraunces fonts, colors, spacing, buttons, native
+   selects, forms, sheets, dialogs, loading/empty/error states, dark mode, safe areas,
+   keyboard avoidance, screen-reader labels, dynamic text, and tablet breakpoints.
+3. Implement secure session restore, automatic access-token refresh, role changes, account
+   deactivation handling, offline/network banners, retry boundaries, deep-link routing,
+   analytics consent, and privacy-safe crash reporting.
+4. Establish CI checks for TypeScript, lint, unit tests, Android preview builds, iOS preview
+   builds, dependency/security review, and backend contract compatibility.
+
+### Phase 2 - customer MVP
+
+1. Authentication: registration, sign-in, password reset, logout, profile photo, personal
+   details, measurements, addresses, map pin selection, and current-location permission.
+2. Discovery: designs, products, vendors, search/filters, favorites, vendor storefronts,
+   image galleries, product/design details, and native share/deep links.
+3. Ordering: vendor-grouped cart, custom order, cloth choice, measurement/address selection,
+   platform/vendor/self delivery, self pickup, invoice review, cancellation rules, order
+   timeline, activity log, and persisted WebSocket chat with reconnect/background catch-up.
+4. Payments: integrate Razorpay's React Native Standard SDK while retaining server-side
+   order creation, signature verification, capture reconciliation, webhooks, refunds, and
+   idempotency. Clothing and tailoring are physical goods/services, so Razorpay—not Apple
+   In-App Purchase or Google Play Billing—is the intended checkout path; re-check store
+   policies immediately before submission.
+5. Delivery: tracking reference, booked/picked-up/in-transit/delivered timeline, route link,
+   and notifications without exposing a courier's raw location beyond authorized views.
+
+### Phase 3 - vendor workspace
+
+1. Vendor request/onboarding status, shop profile/logo, pickup map pin, availability, and
+   internal setup guidance.
+2. Native camera/gallery selection, compression, 2 MB validation, background-safe upload
+   queue, progress, retry, reordering, preview, and 1-10 image rules for designs/products.
+3. Draft/edit/submit/moderation feedback flows, design/product catalog, inventory, order
+   expansion, chat, invoice creation, cloth requirements/cost, bill proof, rejection rules,
+   tailoring stages, payment gate, and ready-for-shipping/self-pickup handoff.
+4. Vendor settlement read-only summaries and export/support contact; retain refund and paid-
+   settlement mutation under super-admin web controls.
+
+### Phase 4 - delivery-agent workspace
+
+1. Assigned-job list, pickup/customer details, route launch, call/contact actions, and the
+   guarded booked -> picked up -> in transit -> delivered workflow.
+2. Explicit foreground location sharing first. Add optional background tracking only after
+   a separate privacy, battery, retention, and App Store/Play disclosure review; never make
+   continuous tracking a hidden requirement.
+3. Add proof-of-pickup/delivery, timestamp, notes, failed-delivery reasons, customer OTP or
+   signature, offline action queue, and conflict-safe server reconciliation.
+
+### Phase 5 - native platform capabilities
+
+- Push notifications for chats, approvals/rejections, invoices, payments, tailoring stages,
+  dispatch, pickup, delivery, cancellations, and vendor applications. Deep-link each push to
+  its authorized screen and suppress sensitive message text on locked screens by default.
+- Camera/photo permission, location permission, maps, opening dialer/email, native sharing,
+  biometric app unlock for returning sessions, app icon/splash, universal links, and Android
+  notification channels. Ask for each permission only when its feature is invoked.
+- Cache read-only catalogs and order summaries with bounded storage; never cache payment
+  credentials, refresh tokens outside encrypted storage, or unrestricted private images.
+
+### Phase 6 - security, QA, and release readiness
+
+1. Threat-model mobile auth, deep links, uploads, chat, payment callbacks, screenshots/logs,
+   rooted/jailbroken devices, replay attempts, and lost-device session revocation. Add a
+   dependency/SBOM process and verify release signing provenance.
+2. Automated tests: shared state machines, API contract tests, component tests, Android/iOS
+   device tests, slow/offline networks, token expiry, WebSocket reconnect, upload recovery,
+   Razorpay success/failure/dismissal, duplicate webhooks, and delivery authorization.
+3. Manual device matrix: current/minimum Android, small/large phones, current/minimum iOS,
+   tablet layouts where supported, light/dark, accessibility font sizes, screen readers,
+   camera/location denial, Indian phone formats, UPI intent apps, and low-memory recovery.
+4. Prepare store assets and compliance: privacy policy, terms, account deletion inside the
+   app, data-safety/privacy nutrition disclosures, permission explanations, content rating,
+   support URL/email, screenshots, review demo account, review notes explaining the physical
+   goods/services business model, and a documented incident/rollback process.
+
+### Phase 7 - staged launch and operations
+
+1. Internal development builds -> Android internal testing and iOS TestFlight -> invited
+   customer/vendor/delivery pilot -> percentage rollout -> public release.
+2. Add privacy-safe crash/performance monitoring, API/mobile-version dashboards, payment and
+   webhook alerts, push-delivery health, upload failures, chat reconnect rate, checkout
+   conversion, and operational runbooks. Do not record chat, precise addresses, tokens,
+   payment payloads, or unrestricted image URLs in analytics.
+3. Define minimum supported versions and a rollback strategy. Backend changes remain backward
+   compatible for at least the active mobile support window because store updates are not
+   installed immediately.
+
+### First release definition of done
+
+- A customer can register, manage fit/address data, discover and order from a vendor, chat,
+  approve/pay an invoice, and track fulfilment on Android and iOS.
+- A vendor can manage shop/listings, discuss and invoice orders, progress tailoring, and hand
+  off paid work without needing the web app for normal daily operations.
+- A delivery agent can receive an assignment and complete the authorized handoff workflow.
+- Logout/revocation, payment verification, uploads, push/deep links, accessibility, privacy,
+  crash-free preview builds, and store review requirements have evidence-backed test results.
+- Recommended implementation order: Phase 0 -> Phase 1 -> customer MVP -> vendor workspace ->
+  delivery agent -> hardening/store launch. Do not start UI screen duplication before the
+  mobile authentication and versioned API contracts are settled.
+
 ## Recommended next milestone
 
 1. Replace startup compatibility statements with versioned Alembic migrations
@@ -877,6 +1020,8 @@ The presets follow Indian vocational tailoring material rather than one universa
 6. Complete Razorpay KYC/live-mode activation, configure the production webhook
    secret in Secret Manager, and run a small live payment/refund smoke test before
    accepting customer payments broadly.
+7. Begin mobile Phase 0 by versioning the API, extracting shared contracts, and
+   designing encrypted device-bound refresh sessions before creating native screens.
 
 ## Resume prompt
 
