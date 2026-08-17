@@ -13,7 +13,7 @@ from sqlalchemy.orm import selectinload
 from app.auth import get_current_user, require_admin, require_buyer, require_vendor
 from app.config import settings
 from app.database import get_db
-from app.deliveries import delivery_from_prepared, prepare_delivery_quotes, serialize_order_delivery
+from app.deliveries import delivery_from_prepared, ensure_tracking_number, prepare_delivery_quotes, serialize_order_delivery
 from app.models import (
     Delivery,
     DeliveryAddress,
@@ -475,7 +475,8 @@ async def _change_order_status(order: ProductOrder, new_status: str, actor: User
     transitions = {
         "placed": {"confirmed", "cancelled"},
         "confirmed": {"packed", "cancelled"},
-        "packed": {"shipped", "cancelled"},
+        "packed": {"ready_for_shipping", "cancelled"},
+        "ready_for_shipping": set(),
         "shipped": {"delivered"},
         "delivered": set(),
         "cancelled": set(),
@@ -486,8 +487,9 @@ async def _change_order_status(order: ProductOrder, new_status: str, actor: User
         product = await db.get(Product, order.product_id, with_for_update=True)
         product.stock_quantity += order.quantity
     order.status = new_status
-    if new_status == "shipped":
-        order.delivery.status = "in_transit"
+    if new_status == "ready_for_shipping":
+        order.delivery.status = "booked"
+        ensure_tracking_number(order.delivery)
         order.delivery.status_updated_at = datetime.now(timezone.utc)
     elif new_status == "delivered":
         order.delivery.status = "delivered"

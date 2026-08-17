@@ -34,13 +34,14 @@ import type { Design, DesignImage, UserProfile } from "@/types/api"
 
 type AdminSection = "reviews" | "products" | "vendor-requests" | "vendors" | "customers" | "staff" | "measurements" | "delivery"
 type AccountFilter = "all" | "active" | "inactive"
-type ManageableRole = "customer" | "vendor" | "admin"
+type ManageableRole = "customer" | "vendor" | "admin" | "delivery_agent"
 const ADMIN_CATEGORY_OPTIONS = [{ value: "all", label: "All categories" }, { value: "women", label: "Women" }, { value: "men", label: "Men" }, { value: "unisex", label: "Unisex" }, { value: "kids", label: "Kids" }]
 const ACCOUNT_STATUS_OPTIONS = [{ value: "all", label: "All statuses" }, { value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }]
 const MANAGEABLE_ROLE_OPTIONS = [
   { value: "customer", label: "Customer" },
   { value: "vendor", label: "Vendor" },
   { value: "admin", label: "Administrator" },
+  { value: "delivery_agent", label: "Delivery agent" },
 ]
 
 interface VendorFormState {
@@ -101,19 +102,20 @@ const AdminWorkspace = () => {
 
   const loadAdmin = useCallback(async () => {
     try {
-      const [me, queue, vendorUsers, customerUsers, staffUsers, requests] = await Promise.all([
+      const [me, queue, vendorUsers, customerUsers, adminUsers, deliveryAgents, requests] = await Promise.all([
         getCurrentUser(),
         api<Design[]>("/api/admin/designs?status=submitted"),
         api<UserProfile[]>("/api/admin/users?role=vendor"),
         api<UserProfile[]>("/api/admin/users?role=customer"),
         api<UserProfile[]>("/api/admin/users?role=admin"),
+        api<UserProfile[]>("/api/admin/users?role=delivery_agent"),
         api<UserProfile[]>("/api/admin/vendor-requests?status=pending"),
       ])
       setProfile(me)
       setDesigns(queue)
       setVendors(vendorUsers)
       setCustomers(customerUsers)
-      setStaff(staffUsers)
+      setStaff([...adminUsers, ...deliveryAgents])
       setVendorRequests(requests)
     } catch (error) {
       toast.error((error as Error).message)
@@ -161,7 +163,7 @@ const AdminWorkspace = () => {
     const remove = (items: UserProfile[]) => items.filter((item) => item.id !== updated.id)
     setVendors((current) => updated.role === "vendor" ? [updated, ...remove(current)] : remove(current))
     setCustomers((current) => updated.role === "customer" ? [updated, ...remove(current)] : remove(current))
-    setStaff((current) => updated.role === "admin" ? [updated, ...remove(current)] : remove(current))
+    setStaff((current) => ["admin", "delivery_agent"].includes(updated.role) ? [updated, ...remove(current)] : remove(current))
   }
 
   const review = async (design: Design, decision: "approved" | "rejected") => {
@@ -404,7 +406,7 @@ const AdminWorkspace = () => {
       ) : (
         <section className="admin-panel">
           <div className="admin-panel-heading">
-            <div><p className="eyebrow">Account directory</p><h2>{section === "vendors" ? "Vendor accounts" : section === "staff" ? "Administrator accounts" : "Customer accounts"}</h2></div>
+            <div><p className="eyebrow">Account directory</p><h2>{section === "vendors" ? "Vendor accounts" : section === "staff" ? "Staff and delivery agents" : "Customer accounts"}</h2></div>
             <div className="admin-filters">
               <label className="search-field"><Search size={17} /><input aria-label="Search accounts" onChange={(event) => setAccountSearch(event.target.value)} placeholder={section === "vendors" ? "Shop, owner, email, phone…" : "Name, email, phone…"} value={accountSearch} /></label>
               <AppSelect ariaLabel="Filter by account status" className="toolbar-select" onValueChange={(value) => setAccountFilter(value as AccountFilter)} options={ACCOUNT_STATUS_OPTIONS} value={accountFilter} />

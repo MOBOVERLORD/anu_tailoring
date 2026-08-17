@@ -3,7 +3,7 @@ import { Ban, CalendarDays, CheckCircle2, ChevronDown, ChevronUp, Clock3, Loader
 import toast from "react-hot-toast"
 import { ApiImage } from "@/components/ApiImage"
 import { ConfirmActionDialog } from "@/components/ConfirmActionDialog"
-import { OrderItemDetail } from "@/components/OrderItemDetail"
+import { OrderItemDetail, type OrderWorkflowUpdate } from "@/components/OrderItemDetail"
 import { OrderCancellationDialog } from "@/components/OrderCancellationDialog"
 import { CombinedOrderInvoice } from "@/components/CombinedOrderInvoice"
 import { ProductOrdersPanel, type CustomerOrderView } from "@/components/ProductOrdersPanel"
@@ -17,6 +17,7 @@ const statusLabels: Record<OrderStatus, string> = {
   fabric_cutting: "Fabric cutting",
   stitching: "Stitching",
   quality_check: "Quality check",
+  ready_for_shipping: "Ready for shipping",
   shipped: "Shipped",
   delivered: "Delivered",
   cancelled: "Cancelled",
@@ -156,6 +157,34 @@ const Orders = ({ mode = "purchases" }: { mode?: "purchases" | "sales" }) => {
     }))
   }
 
+  const replaceWorkflowStatus = useCallback((
+    orderId: number,
+    itemId: number,
+    update: OrderWorkflowUpdate,
+  ) => {
+    setOrders((current) => current.map((order) => {
+      if (order.id !== orderId) return order
+      const updateInvoice = (invoice: Order["invoice"]) => invoice && update.invoice_status ? {
+        ...invoice,
+        status: update.invoice_status,
+        ...(update.payment_status ? { payment_status: update.payment_status } : {}),
+        ...(update.final_payment_status ? { final_payment_status: update.final_payment_status } : {}),
+        ...(typeof update.cloth_received === "boolean" ? { cloth_received: update.cloth_received } : {}),
+        ...(update.cloth_source ? { cloth_source: update.cloth_source } : {}),
+      } : invoice
+      return {
+        ...order,
+        status: update.order_status,
+        invoice: order.combined_order ? updateInvoice(order.invoice) : order.invoice,
+        order_items: order.order_items.map((item) => item.id === itemId ? {
+          ...item,
+          work_status: update.work_status,
+          invoice: order.combined_order ? item.invoice : updateInvoice(item.invoice),
+        } : item),
+      }
+    }))
+  }, [])
+
   const cancelCustomerOrder = async (reason: string) => {
     if (!cancellingOrder) return
     setBusyId(cancellingOrder.id)
@@ -239,7 +268,7 @@ const Orders = ({ mode = "purchases" }: { mode?: "purchases" | "sales" }) => {
             const invoiceAccepted = order.invoice?.status === "approved" || order.order_items.some((item) => item.invoice?.status === "approved")
             const customerCanCancel = isBuyerView && order.customer.id === profile?.id
               && !invoiceAccepted
-              && !["cancelled", "shipped", "delivered"].includes(order.status)
+              && !["cancelled", "ready_for_shipping", "shipped", "delivered"].includes(order.status)
             return (
               <article className={`order-card ${expanded ? "is-expanded" : ""}`} key={order.id}>
                 <button aria-expanded={expanded} className="order-card-toggle" onClick={() => toggleOrder(order.id)} type="button">
@@ -278,10 +307,10 @@ const Orders = ({ mode = "purchases" }: { mode?: "purchases" | "sales" }) => {
                     {order.product_items.length > 0 && <section className="combined-product-lines"><header><Package size={19} /><div><strong>Products in this order</strong><small>Included in the single vendor invoice</small></div></header>{order.product_items.map((item) => <article key={item.id}><span className="order-summary-image">{item.product.image_url ? <ApiImage alt={item.product.title} src={item.product.image_url} /> : <Package size={18} />}</span><div><strong>{item.product.title}</strong><small>{item.quantity} {item.product.unit}{item.selected_size ? ` · ${item.selected_size}` : ""}</small></div><b>₹{item.merchandise_total.toLocaleString("en-IN")}</b><span className={`order-status status-${item.status}`}>{item.status}</span></article>)}</section>}
 
                     <div className="order-detail-items">
-                      {order.order_items.map((item) => <OrderItemDetail item={item} key={item.id} onOrderUpdated={replaceOrder} onUpdated={replaceOrderItem} order={order} profile={profile} />)}
+                      {order.order_items.map((item) => <OrderItemDetail item={item} key={item.id} onOrderUpdated={replaceOrder} onUpdated={replaceOrderItem} onWorkflowUpdated={replaceWorkflowStatus} order={order} profile={profile} />)}
                     </div>
 
-                    <div className="delivery-detail"><strong>{order.combined_order ? "One delivery for the complete order" : "Delivery"}</strong><address>{order.delivery_address.recipient_name}, {order.delivery_address.street_address}, {order.delivery_address.city}, {order.delivery_address.state} {order.delivery_address.postal_code}</address>{order.combined_order && order.deliveries[0] && <span>₹{order.deliveries[0].delivery_cost.toLocaleString("en-IN")} · {(order.deliveries[0].distance_meters / 1000).toFixed(1)} km</span>}</div>
+                    <div className="delivery-detail"><strong>{order.deliveries[0]?.fulfilment_method === "customer_self_pickup" ? "Customer self-pickup" : order.deliveries[0]?.fulfilment_method === "customer_self_delivery" ? "Customer-arranged delivery" : order.deliveries[0]?.fulfilment_method === "vendor_delivery" ? "Vendor-managed delivery" : order.combined_order ? "One delivery for the complete order" : "Delivery"}</strong><address>{order.deliveries[0]?.fulfilment_method === "customer_self_pickup" ? order.deliveries[0].destination_address : `${order.delivery_address.recipient_name}, ${order.delivery_address.street_address}, ${order.delivery_address.city}, ${order.delivery_address.state} ${order.delivery_address.postal_code}`}</address>{order.combined_order && order.deliveries[0] && <span>₹{order.deliveries[0].delivery_cost.toLocaleString("en-IN")}{order.deliveries[0].fulfilment_method === "platform_delivery" ? ` · ${(order.deliveries[0].distance_meters / 1000).toFixed(1)} km` : ""}</span>}</div>
 
                     {isAdmin && drafts[order.id] && (
                       <div className="order-admin-actions">

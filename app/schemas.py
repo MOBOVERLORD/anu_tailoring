@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
-from typing import Dict, Optional, List
+from typing import Dict, Literal, Optional, List
 from datetime import datetime
 from decimal import Decimal
 import re
@@ -77,6 +77,8 @@ class UserResponse(BaseModel):
     vendor_pickup_address: Optional[str] = None
     vendor_pickup_latitude: Optional[float] = None
     vendor_pickup_longitude: Optional[float] = None
+    vendor_delivery_pricing: str = "platform"
+    vendor_delivery_fee: float = 0
     role: str
     is_active: bool
     created_at: datetime
@@ -151,8 +153,8 @@ class AdminUserUpdate(UserUpdate):
         if v is None:
             return None
         normalized = v.strip().lower()
-        if normalized not in {"customer", "vendor", "admin"}:
-            raise ValueError("Role must be customer, vendor, or admin")
+        if normalized not in {"customer", "vendor", "admin", "delivery_agent"}:
+            raise ValueError("Role must be customer, vendor, administrator, or delivery agent")
         return normalized
 
 
@@ -167,6 +169,17 @@ class VendorPickupUpdate(BaseModel):
     @classmethod
     def normalize_pickup_address(cls, v: str) -> str:
         return " ".join(v.split())
+
+
+class VendorDeliverySettingsUpdate(BaseModel):
+    pricing: Literal["platform", "vendor"]
+    delivery_fee: Decimal = Field(default=Decimal("0"), ge=0, le=100_000, decimal_places=2)
+
+    @model_validator(mode="after")
+    def vendor_fee_is_configured(self):
+        if self.pricing == "vendor" and self.delivery_fee <= 0:
+            raise ValueError("Enter a delivery fee greater than zero for vendor delivery")
+        return self
 
 
 class VendorCreate(UserCreate):
@@ -687,6 +700,7 @@ class OrderCreate(BaseModel):
     items: List[OrderItemCreate] = Field(default_factory=list, max_length=10)
     product_items: List[OrderProductItemCreate] = Field(default_factory=list, max_length=20)
     delivery_quote_token: Optional[str] = Field(default=None, max_length=4000)
+    fulfilment_method: Literal["home_delivery", "customer_self_delivery", "customer_self_pickup"] = "home_delivery"
 
     @model_validator(mode="after")
     def contains_checkout_lines(self):
@@ -793,6 +807,37 @@ class PaymentReferenceCreate(BaseModel):
         return normalized
 
 
+class RazorpayOrderCreate(BaseModel):
+    scope: Literal["combined_order", "order_item", "combined_order_final", "order_item_final"]
+    resource_id: int = Field(gt=0)
+
+
+class RazorpayCheckoutSession(BaseModel):
+    key_id: str
+    order_id: str
+    amount: int
+    currency: str
+    name: str
+    description: str
+    prefill_name: str
+    prefill_email: EmailStr
+    prefill_contact: Optional[str]
+
+
+class RazorpayPaymentVerify(BaseModel):
+    scope: Literal["combined_order", "order_item", "combined_order_final", "order_item_final"]
+    resource_id: int = Field(gt=0)
+    razorpay_order_id: str = Field(min_length=8, max_length=100, pattern=r"^order_[A-Za-z0-9]+$")
+    razorpay_payment_id: str = Field(min_length=8, max_length=100, pattern=r"^pay_[A-Za-z0-9]+$")
+    razorpay_signature: str = Field(min_length=64, max_length=64, pattern=r"^[A-Fa-f0-9]{64}$")
+
+
+class RazorpayPaymentVerificationResponse(BaseModel):
+    success: bool
+    payment_id: str
+    message: str
+
+
 class OrderCommentCreate(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
 
@@ -840,6 +885,8 @@ class VendorInvoiceResponse(BaseModel):
     status: str
     payment_status: str
     payment_reference: Optional[str]
+    final_payment_status: str
+    final_paid_at: Optional[datetime]
     cloth_received: bool
     cloth_bill_filename: Optional[str]
     cloth_bill_content_type: Optional[str]
@@ -887,6 +934,7 @@ class DeliveryQuoteRequest(BaseModel):
     design_id: Optional[int] = None
     product_id: Optional[int] = None
     address_id: int
+    fulfilment_method: Literal["home_delivery", "customer_self_delivery", "customer_self_pickup"] = "home_delivery"
 
     @model_validator(mode="after")
     def exactly_one_delivery_subject(self):
@@ -898,6 +946,7 @@ class DeliveryQuoteRequest(BaseModel):
 class DeliveryQuoteResponse(BaseModel):
     vendor_id: int
     vendor_name: str
+    fulfilment_method: Literal["platform_delivery", "vendor_delivery", "customer_self_delivery", "customer_self_pickup"]
     distance_meters: int
     duration_seconds: Optional[int]
     delivery_cost: float
@@ -946,7 +995,16 @@ class DeliveryResponse(BaseModel):
     product_order_id: Optional[int]
     order_type: str
     vendor_id: int
+    delivery_agent_id: Optional[int]
+    delivery_agent_name: Optional[str]
+    delivery_agent_phone: Optional[str]
+    delivery_agent_latitude: Optional[float]
+    delivery_agent_longitude: Optional[float]
+    delivery_agent_location_accuracy_meters: Optional[float]
+    delivery_agent_location_updated_at: Optional[datetime]
+    assigned_at: Optional[datetime]
     vendor_name: str
+    fulfilment_method: str
     customer_name: str
     customer_phone: Optional[str]
     provider_name: str
@@ -977,6 +1035,7 @@ class DeliveryResponse(BaseModel):
 class OrderDeliveryResponse(BaseModel):
     id: int
     vendor_id: int
+    fulfilment_method: str
     provider_name: str
     maps_provider: str
     destination_address: str
@@ -1009,7 +1068,7 @@ class ProductOrderStatusUpdate(BaseModel):
     @classmethod
     def valid_product_order_status(cls, v: str) -> str:
         normalized = v.strip().lower()
-        if normalized not in {"placed", "confirmed", "packed", "shipped", "delivered", "cancelled"}:
+        if normalized not in {"placed", "confirmed", "packed", "ready_for_shipping", "shipped", "delivered", "cancelled"}:
             raise ValueError("Invalid product order status")
         return normalized
 
@@ -1078,6 +1137,20 @@ class DeliveryTrackingUpdate(BaseModel):
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise ValueError("Tracking URL must start with http:// or https://")
         return v
+
+
+class DeliveryAssignmentUpdate(BaseModel):
+    delivery_agent_id: Optional[int] = None
+
+
+class DeliveryAgentLocationUpdate(BaseModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    accuracy_meters: Optional[float] = Field(default=None, ge=0, le=100_000)
+
+
+class DeliveryAgentStatusUpdate(BaseModel):
+    status: Literal["picked_up", "in_transit", "delivered"]
 
 
 class OrderResponse(BaseModel):

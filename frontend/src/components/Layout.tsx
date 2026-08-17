@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Bell, CheckCheck, ChevronRight, ClipboardList, LayoutGrid, LogOut, PackageCheck, ShieldCheck, ShoppingBag, ShoppingCart, Store, UserRound, UsersRound } from "lucide-react"
+import { Bell, CheckCheck, ChevronRight, ClipboardList, LayoutGrid, LogOut, PackageCheck, ShieldCheck, ShoppingBag, ShoppingCart, Store, Truck, UserRound, UsersRound } from "lucide-react"
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { Toaster, toast } from "react-hot-toast"
 import { api, closeSession, getAccessToken, getCurrentUser, onAuthChange } from "@/lib/api"
@@ -48,6 +48,7 @@ const Layout = () => {
       "/vendor/products": "Vendor products",
       "/vendor/sales-orders": "Vendor sales orders",
       "/admin": "Administration",
+      "/delivery-agent": "Assigned deliveries",
     }
     document.title = location.pathname === "/" && !isAuthenticated
       ? "Vastrivo | Custom Tailoring & Clothing Marketplace"
@@ -179,6 +180,8 @@ const Layout = () => {
       ? "Administrator"
       : profile?.role === "vendor"
         ? "Vendor"
+        : profile?.role === "delivery_agent"
+          ? "Delivery agent"
         : "Customer"
   const notificationTime = (createdAt: string) => {
     const minutes = Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 60_000))
@@ -188,7 +191,9 @@ const Layout = () => {
     return new Date(createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })
   }
 
-  const mobileWorkspace = profile?.role === "vendor"
+  const mobileWorkspace = profile?.role === "delivery_agent"
+    ? { to: "/delivery-agent", label: "Deliveries", icon: <Truck size={19} />, active: location.pathname === "/delivery-agent" }
+    : profile?.role === "vendor"
     ? { to: "/vendor", label: "Studio", icon: <Store size={19} />, active: location.pathname === "/vendor" || location.pathname === "/vendor/products" }
     : profile?.role === "admin" || profile?.role === "super_admin"
       ? { to: "/admin", label: "Admin", icon: <ShieldCheck size={19} />, active: location.pathname === "/admin" }
@@ -211,6 +216,9 @@ const Layout = () => {
           {isAuthenticated ? (
             <>
               <nav className="main-nav" aria-label="Main navigation">
+                {profile?.role === "delivery_agent" ? (
+                  <Link className={location.pathname === "/delivery-agent" ? "active" : ""} to="/delivery-agent"><Truck size={16} /> Assigned deliveries</Link>
+                ) : <>
                 <Link className={location.pathname === "/" ? "active" : ""} to="/">
                   Designs
                 </Link>
@@ -235,9 +243,10 @@ const Layout = () => {
                     <ShieldCheck size={16} /> Administration
                   </Link>
                 )}
+                </>}
               </nav>
               <div className="header-actions">
-                <Link aria-label={`Cart with ${cart.lines.length} items`} className={`icon-button cart-header-button ${location.pathname === "/cart" ? "active" : ""}`} to="/cart"><ShoppingCart size={19} />{cart.lines.length > 0 && <span>{cart.lines.length > 9 ? "9+" : cart.lines.length}</span>}</Link>
+                {profile?.role !== "delivery_agent" && <Link aria-label={`Cart with ${cart.lines.length} items`} className={`icon-button cart-header-button ${location.pathname === "/cart" ? "active" : ""}`} to="/cart"><ShoppingCart size={19} />{cart.lines.length > 0 && <span>{cart.lines.length > 9 ? "9+" : cart.lines.length}</span>}</Link>}
                 <div className="notification-menu" ref={notificationMenu}>
                   <button
                     aria-expanded={notificationsOpen}
@@ -343,6 +352,10 @@ const Layout = () => {
       </main>
       {isAuthenticated && profile && (
         <nav aria-label="Mobile navigation" className="mobile-bottom-nav">
+          {profile.role === "delivery_agent" ? <>
+          <Link aria-current={location.pathname === "/delivery-agent" ? "page" : undefined} className={location.pathname === "/delivery-agent" ? "active" : ""} to="/delivery-agent"><Truck size={19} /><span>Deliveries</span></Link>
+          <Link aria-current={location.pathname === "/profile" ? "page" : undefined} className={location.pathname === "/profile" ? "active" : ""} to="/profile"><UserRound size={19} /><span>Profile</span></Link>
+          </> : <>
           <Link aria-current={location.pathname === "/" ? "page" : undefined} className={location.pathname === "/" ? "active" : ""} to="/">
             <LayoutGrid size={19} /><span>Designs</span>
           </Link>
@@ -362,6 +375,7 @@ const Layout = () => {
           <Link aria-current={location.pathname === "/profile" ? "page" : undefined} className={location.pathname === "/profile" ? "active" : ""} to="/profile">
             <UserRound size={19} /><span>Profile</span>
           </Link>
+          </>}
         </nav>
       )}
     </div>

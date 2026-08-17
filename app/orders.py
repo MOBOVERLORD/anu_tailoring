@@ -16,6 +16,7 @@ from app.database import AsyncSessionLocal, get_db
 from app.design_service import serialize_design
 from app.deliveries import (
     delivery_from_prepared,
+    ensure_tracking_number,
     prepare_delivery_quotes,
     serialize_order_delivery,
 )
@@ -68,6 +69,19 @@ from app.storage import (
 router = APIRouter(prefix="/api/orders", tags=["orders"])
 admin_router = APIRouter(prefix="/api/admin/orders", tags=["administration"])
 
+WORK_STATUS_TRANSITIONS = {
+    "ready_to_start": "fabric_cutting",
+    "fabric_cutting": "stitching",
+    "stitching": "quality_check",
+    "quality_check": "completed",
+}
+WORK_STATUS_LABELS = {
+    "fabric_cutting": "fabric cutting",
+    "stitching": "stitching",
+    "quality_check": "quality check",
+    "completed": "completed",
+}
+
 
 def compute_item_price(design: Design, fabric_choice: str | None) -> float:
     # A design's price is the vendor's tailoring service charge only. Cloth is
@@ -85,6 +99,43 @@ def snapshot_measurements(profile: MeasurementProfile) -> dict:
         "measurements": profile.measurements,
         "notes": profile.notes,
     }
+
+
+async def sync_order_tailoring_status(order: Order, db: AsyncSession) -> None:
+    """Synchronize the order summary with its tailoring-item progress."""
+    active = list((await db.scalars(
+        select(OrderItem.work_status).where(
+            OrderItem.order_id == order.id,
+            OrderItem.work_status.notin_(["rejected", "cancelled"]),
+        )
+    )).all())
+    if not active:
+        return
+    rank = {
+        "awaiting_invoice": 0,
+        "awaiting_approval": 0,
+        "awaiting_cloth_payment": 0,
+        "awaiting_payment_verification": 0,
+        "awaiting_cloth": 0,
+        "ready_to_start": 0,
+        "fabric_cutting": 1,
+        "stitching": 2,
+        "quality_check": 3,
+        "completed": 4,
+    }
+    progress = (
+        min(rank.get(status_value, 0) for status_value in active)
+        if order.vendor_id is not None
+        else max(rank.get(status_value, 0) for status_value in active)
+    )
+    if progress >= 3:
+        order.status = OrderStatus.QUALITY_CHECK
+    elif progress == 2:
+        order.status = OrderStatus.STITCHING
+    elif progress == 1:
+        order.status = OrderStatus.FABRIC_CUTTING
+    else:
+        order.status = OrderStatus.CONFIRMED
 
 
 def _order_options():
@@ -152,6 +203,8 @@ def serialize_invoice(invoice: VendorInvoice) -> dict:
         "status": invoice.status,
         "payment_status": invoice.payment_status,
         "payment_reference": invoice.payment_reference,
+        "final_payment_status": invoice.final_payment_status,
+        "final_paid_at": invoice.final_paid_at,
         "cloth_received": invoice.cloth_received,
         "cloth_bill_filename": invoice.cloth_bill_original_filename,
         "cloth_bill_content_type": invoice.cloth_bill_content_type,
@@ -206,6 +259,8 @@ def serialize_combined_invoice(invoice: OrderInvoice) -> dict:
         "status": invoice.status,
         "payment_status": invoice.payment_status,
         "payment_reference": invoice.payment_reference,
+        "final_payment_status": invoice.final_payment_status,
+        "final_paid_at": invoice.final_paid_at,
         "cloth_received": invoice.cloth_received,
         "cloth_bill_filename": invoice.cloth_bill_original_filename,
         "cloth_bill_content_type": invoice.cloth_bill_content_type,
@@ -565,7 +620,11 @@ async def create_order(
     } if supplied_tokens else {}
 
     delivery_quotes = await prepare_delivery_quotes(
-        vendors_by_id.values(), address, db, delivery_quote_tokens
+        vendors_by_id.values(),
+        address,
+        db,
+        delivery_quote_tokens,
+        fulfilment_method=order_data.fulfilment_method,
     )
     total_amount = round(
         total_amount + sum(quote.delivery_cost for quote in delivery_quotes), 2
@@ -644,7 +703,7 @@ async def cancel_customer_order(
         raise HTTPException(status_code=404, detail="Order not found")
     if order.status == OrderStatus.CANCELLED:
         raise HTTPException(status_code=409, detail="This order is already cancelled")
-    if order.status in {OrderStatus.SHIPPED, OrderStatus.DELIVERED}:
+    if order.status in {OrderStatus.READY_FOR_SHIPPING, OrderStatus.SHIPPED, OrderStatus.DELIVERED}:
         raise HTTPException(status_code=409, detail="An order already dispatched cannot be cancelled")
     if (
         order.combined_invoice and order.combined_invoice.status == "approved"
@@ -827,6 +886,16 @@ async def save_combined_order_invoice(
         invoice.revision += 1
         invoice.payment_status = "not_required"
         invoice.payment_reference = None
+        invoice.payment_gateway = None
+        invoice.gateway_order_id = None
+        invoice.gateway_payment_id = None
+        invoice.gateway_amount_paise = None
+        invoice.final_payment_status = "pending"
+        invoice.final_payment_gateway = None
+        invoice.final_gateway_order_id = None
+        invoice.final_gateway_payment_id = None
+        invoice.final_gateway_amount_paise = None
+        invoice.final_paid_at = None
         invoice.cloth_received = False
         invoice.issued_at = None
         invoice.approved_at = None
@@ -1048,8 +1117,140 @@ async def confirm_combined_customer_cloth(
     for item in order.order_items:
         if item.work_status == "awaiting_cloth":
             item.work_status = "ready_to_start"
+    await sync_order_tailoring_status(order, db)
+    db.add(Notification(
+        user_id=order.user_id,
+        title=f"Cloth received for order #{order.id}",
+        message=f"{vendor.shop_name or vendor.full_name} confirmed receipt of your cloth.",
+        notification_type="cloth_received",
+        link="/orders",
+    ))
     await db.commit()
     return serialize_order(await _loaded_order(order.id, db), include_draft_invoices=True)
+
+
+@router.post(
+    "/vendor/{order_id}/items/{item_id}/advance",
+    response_model=OrderResponse,
+)
+async def advance_combined_item_work(
+    order_id: int,
+    item_id: int,
+    vendor: User = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    order = await _vendor_combined_order(order_id, vendor, db)
+    invoice = order.combined_invoice
+    item = next((entry for entry in order.order_items if entry.id == item_id), None)
+    if not item:
+        raise HTTPException(status_code=404, detail="Order item not found")
+    if not invoice or invoice.status != "approved":
+        raise HTTPException(status_code=409, detail="The customer must approve the invoice first")
+    if item.work_status == "ready_to_start":
+        if (
+            invoice.cloth_source == "vendor_supplied"
+            and invoice.cloth_cost > 0
+            and invoice.payment_status != "paid"
+        ):
+            raise HTTPException(status_code=409, detail="The cloth payment must be completed first")
+        if invoice.cloth_source == "customer_provided" and not invoice.cloth_received:
+            raise HTTPException(status_code=409, detail="Confirm receipt of the customer's cloth first")
+    next_status = WORK_STATUS_TRANSITIONS.get(item.work_status)
+    if not next_status:
+        raise HTTPException(
+            status_code=409,
+            detail="This tailoring item has no available status update",
+        )
+    item.work_status = next_status
+    await sync_order_tailoring_status(order, db)
+    db.add(Notification(
+        user_id=order.user_id,
+        title=f"Order #{order.id} tailoring updated",
+        message=(
+            f'{vendor.shop_name or vendor.full_name} marked "{item.design.title}" '
+            f'as {WORK_STATUS_LABELS[next_status]}.'
+        ),
+        notification_type="tailoring_status",
+        link="/orders",
+    ))
+    await db.commit()
+    return serialize_order(
+        await _loaded_order(order.id, db),
+        include_draft_invoices=True,
+    )
+
+
+@router.post("/vendor/{order_id}/ship", response_model=OrderResponse)
+async def ship_paid_combined_order(
+    order_id: int,
+    vendor: User = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark a completed, fully paid vendor order ready for courier handoff."""
+    order = await _vendor_combined_order(order_id, vendor, db)
+    invoice = order.combined_invoice
+    if not invoice or invoice.status != "approved":
+        raise HTTPException(status_code=409, detail="The customer must approve the invoice first")
+    active_items = [
+        item for item in order.order_items
+        if item.work_status not in {"cancelled", "rejected"}
+    ]
+    if active_items and any(item.work_status != "completed" for item in active_items):
+        raise HTTPException(status_code=409, detail="Complete every tailoring item before shipping")
+    if invoice.final_payment_status != "paid":
+        raise HTTPException(status_code=409, detail="Final payment must be completed before shipping")
+    if order.status in {OrderStatus.READY_FOR_SHIPPING, OrderStatus.SHIPPED, OrderStatus.DELIVERED}:
+        raise HTTPException(status_code=409, detail="This order has already moved to delivery")
+    if order.status == OrderStatus.CANCELLED:
+        raise HTTPException(status_code=409, detail="A cancelled order cannot be shipped")
+
+    order.status = OrderStatus.READY_FOR_SHIPPING
+    fulfilment_method = order.deliveries[0].fulfilment_method if order.deliveries else "platform_delivery"
+    for delivery in order.deliveries:
+        if delivery.status != "cancelled":
+            delivery.status = "booked"
+            ensure_tracking_number(delivery)
+            delivery.status_updated_at = datetime.now(timezone.utc)
+    order.tracking_number = next(
+        (delivery.tracking_number for delivery in order.deliveries if delivery.tracking_number),
+        order.tracking_number,
+    )
+    for product_item in order.product_items:
+        if product_item.status != "cancelled":
+            product_item.status = "packed"
+
+    pickup = fulfilment_method == "customer_self_pickup"
+    db.add(Notification(
+        user_id=order.user_id,
+        title=(f"Order #{order.id} is ready for pickup" if pickup else f"Order #{order.id} is ready for shipping"),
+        message=(
+            f"{vendor.shop_name or vendor.full_name} marked your order ready for collection."
+            if pickup
+            else f"{vendor.shop_name or vendor.full_name} packed your paid order. A delivery agent will be assigned before pickup."
+        ),
+        notification_type="order_ready_for_pickup" if pickup else "order_ready_for_shipping",
+        link="/orders",
+    ))
+    if fulfilment_method == "platform_delivery":
+        admin_ids = await db.scalars(
+            select(User.id).where(
+                User.role.in_([UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value]),
+                User.is_active.is_(True),
+            )
+        )
+        for admin_id in admin_ids.all():
+            db.add(Notification(
+                user_id=admin_id,
+                title=f"Delivery ready to assign · order #{order.id}",
+                message=f"{vendor.shop_name or vendor.full_name} marked tracking {order.tracking_number} ready for pickup.",
+                notification_type="delivery_ready_for_assignment",
+                link="/admin?section=delivery",
+            ))
+    await db.commit()
+    return serialize_order(
+        await _loaded_order(order.id, db),
+        include_draft_invoices=True,
+    )
 
 
 @router.post("/vendor/{order_id}/reject", response_model=OrderResponse)
@@ -1253,6 +1454,16 @@ async def save_vendor_invoice(
         invoice.revision += 1
         invoice.payment_status = "not_required"
         invoice.payment_reference = None
+        invoice.payment_gateway = None
+        invoice.gateway_order_id = None
+        invoice.gateway_payment_id = None
+        invoice.gateway_amount_paise = None
+        invoice.final_payment_status = "pending"
+        invoice.final_payment_gateway = None
+        invoice.final_gateway_order_id = None
+        invoice.final_gateway_payment_id = None
+        invoice.final_gateway_amount_paise = None
+        invoice.final_paid_at = None
         invoice.cloth_received = False
         invoice.issued_at = None
         invoice.approved_at = None
@@ -1581,6 +1792,40 @@ async def start_vendor_work(
     return await _refreshed_item_response(item.id, db, True)
 
 
+@router.post("/vendor/items/{item_id}/advance", response_model=OrderItemResponse)
+async def advance_vendor_work(
+    item_id: int,
+    vendor: User = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    item = await _vendor_order_item(item_id, vendor, db)
+    if item.order.vendor_id is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Use the combined-order progress action for this item",
+        )
+    next_status = WORK_STATUS_TRANSITIONS.get(item.work_status)
+    if item.work_status == "ready_to_start" or not next_status:
+        raise HTTPException(
+            status_code=409,
+            detail="Start tailoring before advancing to the next status",
+        )
+    item.work_status = next_status
+    await sync_order_tailoring_status(item.order, db)
+    db.add(Notification(
+        user_id=item.order.user_id,
+        title=f"Order #{item.order_id} tailoring updated",
+        message=(
+            f'{vendor.shop_name or vendor.full_name} marked "{item.design.title}" '
+            f'as {WORK_STATUS_LABELS[next_status]}.'
+        ),
+        notification_type="tailoring_status",
+        link="/orders",
+    ))
+    await db.commit()
+    return await _refreshed_item_response(item.id, db, True)
+
+
 @router.post("/items/{item_id}/comments", response_model=OrderItemResponse)
 async def add_order_comment(
     item_id: int,
@@ -1699,6 +1944,7 @@ async def order_chat_socket(websocket: WebSocket, item_id: int):
     await websocket.accept()
     await websocket.send_json({"type": "ready"})
     session_checks = 0
+    latest_workflow_state = None
 
     try:
         while True:
@@ -1751,6 +1997,29 @@ async def order_chat_socket(websocket: WebSocket, item_id: int):
                 session_checks = 0
 
             async with AsyncSessionLocal() as db:
+                workflow = (
+                    await db.execute(
+                        select(
+                            OrderItem.work_status,
+                            Order.status.label("order_status"),
+                            Order.vendor_id.label("combined_vendor_id"),
+                            OrderInvoice.status.label("combined_invoice_status"),
+                            OrderInvoice.payment_status.label("combined_payment_status"),
+                            OrderInvoice.final_payment_status.label("combined_final_payment_status"),
+                            OrderInvoice.cloth_received.label("combined_cloth_received"),
+                            OrderInvoice.cloth_source.label("combined_cloth_source"),
+                            VendorInvoice.status.label("item_invoice_status"),
+                            VendorInvoice.payment_status.label("item_payment_status"),
+                            VendorInvoice.final_payment_status.label("item_final_payment_status"),
+                            VendorInvoice.cloth_received.label("item_cloth_received"),
+                            VendorInvoice.cloth_source.label("item_cloth_source"),
+                        )
+                        .join(OrderItem.order)
+                        .outerjoin(OrderInvoice, OrderInvoice.order_id == Order.id)
+                        .outerjoin(VendorInvoice, VendorInvoice.order_item_id == OrderItem.id)
+                        .where(OrderItem.id == item_id)
+                    )
+                ).one_or_none()
                 comments = (
                     await db.execute(
                         select(OrderComment)
@@ -1760,6 +2029,56 @@ async def order_chat_socket(websocket: WebSocket, item_id: int):
                         .limit(100)
                     )
                 ).scalars().all()
+            if not workflow:
+                await websocket.close(code=4404, reason="Order item no longer exists")
+                return
+            current_order_status = (
+                workflow.order_status.value
+                if isinstance(workflow.order_status, OrderStatus)
+                else str(workflow.order_status)
+            )
+            is_combined = workflow.combined_vendor_id is not None
+            invoice_status = (
+                workflow.combined_invoice_status
+                if is_combined else workflow.item_invoice_status
+            )
+            payment_status = (
+                workflow.combined_payment_status
+                if is_combined else workflow.item_payment_status
+            )
+            final_payment_status = (
+                workflow.combined_final_payment_status
+                if is_combined else workflow.item_final_payment_status
+            )
+            cloth_received = (
+                workflow.combined_cloth_received
+                if is_combined else workflow.item_cloth_received
+            )
+            cloth_source = (
+                workflow.combined_cloth_source
+                if is_combined else workflow.item_cloth_source
+            )
+            workflow_state = (
+                workflow.work_status,
+                current_order_status,
+                invoice_status,
+                payment_status,
+                final_payment_status,
+                cloth_received,
+                cloth_source,
+            )
+            if workflow_state != latest_workflow_state:
+                await websocket.send_json({
+                    "type": "workflow",
+                    "work_status": workflow.work_status,
+                    "order_status": current_order_status,
+                    "invoice_status": invoice_status,
+                    "payment_status": payment_status,
+                    "final_payment_status": final_payment_status,
+                    "cloth_received": cloth_received,
+                    "cloth_source": cloth_source,
+                })
+                latest_workflow_state = workflow_state
             for entry in comments:
                 await websocket.send_json({"type": "message", "comment": _serialize_comment(entry)})
                 latest_id = max(latest_id, entry.id)

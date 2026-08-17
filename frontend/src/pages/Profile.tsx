@@ -15,6 +15,7 @@ import {
   Save,
   Star,
   Store,
+  Truck,
   Trash2,
   UserRound,
 } from "lucide-react"
@@ -403,6 +404,10 @@ const Profile = () => {
     pickup_latitude: null,
     pickup_longitude: null,
   })
+  const [vendorDeliveryDraft, setVendorDeliveryDraft] = useState<{
+    pricing: "platform" | "vendor"
+    delivery_fee: number
+  }>({ pricing: "platform", delivery_fee: 0 })
   const [measurements, setMeasurements] = useState<MeasurementProfile[]>([])
   const [categories, setCategories] = useState<MeasurementCategory[]>([])
   const [addresses, setAddresses] = useState<DeliveryAddress[]>([])
@@ -416,6 +421,7 @@ const Profile = () => {
   const [savingVendorRequest, setSavingVendorRequest] = useState(false)
   const [uploadingImage, setUploadingImage] = useState<"profile" | "logo" | null>(null)
   const [savingVendorPickup, setSavingVendorPickup] = useState(false)
+  const [savingVendorDelivery, setSavingVendorDelivery] = useState(false)
   const [loading, setLoading] = useState(true)
   const profileContent = useRef<HTMLElement>(null)
   const navigate = useNavigate()
@@ -457,6 +463,10 @@ const Profile = () => {
           pickup_address: user.vendor_pickup_address || "",
           pickup_latitude: user.vendor_pickup_latitude,
           pickup_longitude: user.vendor_pickup_longitude,
+        })
+        setVendorDeliveryDraft({
+          pricing: user.vendor_delivery_pricing,
+          delivery_fee: user.vendor_delivery_fee,
         })
         setMeasurements(userMeasurements)
         setAddresses(userAddresses)
@@ -653,6 +663,28 @@ const Profile = () => {
       toast.error((error as Error).message)
     } finally {
       setSavingVendorPickup(false)
+    }
+  }
+
+  const saveVendorDelivery = async (event: FormEvent) => {
+    event.preventDefault()
+    setSavingVendorDelivery(true)
+    try {
+      const updated = await api<UserProfile>("/api/addresses/vendor-delivery-settings", {
+        method: "PUT",
+        body: JSON.stringify(vendorDeliveryDraft),
+      })
+      setProfile(updated)
+      setVendorDeliveryDraft({
+        pricing: updated.vendor_delivery_pricing,
+        delivery_fee: updated.vendor_delivery_fee,
+      })
+      updateCurrentUserCache(updated)
+      toast.success(updated.vendor_delivery_pricing === "vendor" ? "Your delivery price is active" : "Platform delivery pricing is active")
+    } catch (error) {
+      toast.error((error as Error).message)
+    } finally {
+      setSavingVendorDelivery(false)
     }
   }
 
@@ -901,6 +933,33 @@ const Profile = () => {
                     <Save size={17} /> {savingVendorPickup ? "Saving…" : "Save pickup location"}
                   </button>
                 </div>
+              </form>
+              <form className="profile-form vendor-delivery-form" onSubmit={saveVendorDelivery}>
+                <div className="vendor-delivery-heading">
+                  <span className="record-icon"><Truck size={20} /></span>
+                  <div><h3>Delivery pricing</h3><p>Choose who prices home delivery. Customers can still select self-delivery or self-pickup for ₹0.</p></div>
+                </div>
+                <div className="form-grid two">
+                  <div className="field">
+                    <label htmlFor="vendor-delivery-pricing">Home delivery service</label>
+                    <AppSelect
+                      id="vendor-delivery-pricing"
+                      onValueChange={(value) => setVendorDeliveryDraft((current) => ({ ...current, pricing: value as "platform" | "vendor", delivery_fee: value === "platform" ? 0 : current.delivery_fee }))}
+                      options={[
+                        { value: "platform", label: "Platform distance pricing" },
+                        { value: "vendor", label: "My own fixed delivery price" },
+                      ]}
+                      value={vendorDeliveryDraft.pricing}
+                    />
+                    <small>Platform pricing uses the saved workshop and customer delivery distance.</small>
+                  </div>
+                  {vendorDeliveryDraft.pricing === "vendor" && <div className="field">
+                    <label htmlFor="vendor-delivery-fee">Delivery price per order (₹)</label>
+                    <input id="vendor-delivery-fee" max={100000} min={1} onChange={(event) => setVendorDeliveryDraft((current) => ({ ...current, delivery_fee: Number(event.target.value) }))} required step="0.01" type="number" value={vendorDeliveryDraft.delivery_fee || ""} />
+                    <small>This is charged once for all items in the same vendor order.</small>
+                  </div>}
+                </div>
+                <div className="form-actions"><button className="button button-primary" disabled={savingVendorDelivery || (vendorDeliveryDraft.pricing === "vendor" && vendorDeliveryDraft.delivery_fee <= 0)} type="submit"><Save size={17} /> {savingVendorDelivery ? "Saving…" : "Save delivery pricing"}</button></div>
               </form>
             </>
           )}

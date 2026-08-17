@@ -16,6 +16,7 @@ import VendorStorefront from "./pages/VendorStorefront"
 import Cart from "./pages/Cart"
 import ForgotPassword from "./pages/ForgotPassword"
 import ResetPassword from "./pages/ResetPassword"
+import DeliveryAgentWorkspace from "./pages/DeliveryAgentWorkspace"
 import { getAccessToken, getCurrentUser, onAuthChange } from "./lib/api"
 import type { UserProfile } from "./types/api"
 import { CartProvider } from "./context/CartContext"
@@ -47,7 +48,13 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 function HomeRoute() {
   const [isAuthenticated, setIsAuthenticated] = useState(Boolean(getAccessToken()))
+  const [profile, setProfile] = useState<UserProfile | null>(null)
   useEffect(() => onAuthChange(() => setIsAuthenticated(Boolean(getAccessToken()))), [])
+  useEffect(() => {
+    if (isAuthenticated) void getCurrentUser().then(setProfile).catch(() => setProfile(null))
+    else setProfile(null)
+  }, [isAuthenticated])
+  if (profile?.role === "delivery_agent") return <Navigate replace to="/delivery-agent" />
   return isAuthenticated ? <Home /> : <PublicHome />
 }
 
@@ -87,6 +94,7 @@ function App() {
           <Route path="vendor/products" element={<RequireAuth><RequireRole roles={["vendor"]}><VendorProducts /></RequireRole></RequireAuth>} />
           <Route path="vendor/sales-orders" element={<RequireAuth><RequireRole roles={["vendor"]}><Orders mode="sales" /></RequireRole></RequireAuth>} />
           <Route path="admin" element={<RequireAuth><RequireRole roles={["admin", "super_admin"]}><AdminWorkspace /></RequireRole></RequireAuth>} />
+          <Route path="delivery-agent" element={<RequireAuth><RequireRole roles={["delivery_agent"]}><DeliveryAgentWorkspace /></RequireRole></RequireAuth>} />
           <Route path="*" element={<Navigate replace to="/" />} />
         </Route>
       </Routes></CartProvider>

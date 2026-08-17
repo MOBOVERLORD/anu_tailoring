@@ -1,31 +1,48 @@
 """Local delivery/provider smoke test without calling an external map service."""
 
 import asyncio
+from datetime import datetime, timezone
 from decimal import Decimal
 from types import SimpleNamespace
+from uuid import uuid4
 
 import httpx
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal, engine
 from app.admin import update_managed_user
 from app.addresses import (
     _apply_verified_location,
     _create_location_token,
+    update_my_vendor_delivery_settings,
     update_my_vendor_pickup,
 )
-from app.deliveries import calculate_delivery_cost
+from app.deliveries import (
+    _create_quote_token,
+    calculate_delivery_cost,
+    ensure_tracking_number,
+    assign_delivery_agent,
+    update_assigned_delivery_status,
+    update_delivery_agent_location,
+    prepare_delivery_quotes,
+    resolve_fulfilment_method,
+)
 from app.main import app, init_db_and_seed_admin
 from app import maps
 from app.config import settings as app_settings
-from app.models import DeliveryAddress, DeliverySettings, UserRole
+from app.models import Delivery, DeliveryAddress, DeliverySettings, Order, OrderStatus, User, UserRole
 from app.schemas import (
     AdminUserUpdate,
     BrowserLocationRequest,
     DeliverySettingsUpdate,
+    DeliveryAgentLocationUpdate,
+    DeliveryAgentStatusUpdate,
+    DeliveryAssignmentUpdate,
     DeliveryTrackingUpdate,
     VendorPickupUpdate,
+    VendorDeliverySettingsUpdate,
     VendorInvoiceUpsert,
 )
 
@@ -79,6 +96,18 @@ async def main() -> None:
     )
     assert role_update.role == UserRole.VENDOR.value
     assert "vendor_pickup_address" not in AdminUserUpdate.model_fields
+    assert AdminUserUpdate(
+        full_name="Courier One", phone=None, location=None, role="delivery_agent"
+    ).role == UserRole.DELIVERY_AGENT.value
+
+    delivery_stub = SimpleNamespace(id=42, tracking_number=None)
+    assert ensure_tracking_number(delivery_stub) == "VST-D00000042"
+    assert ensure_tracking_number(delivery_stub) == "VST-D00000042"
+    assert DeliveryAssignmentUpdate(delivery_agent_id=12).delivery_agent_id == 12
+    assert DeliveryAgentStatusUpdate(status="picked_up").status == "picked_up"
+    assert DeliveryAgentLocationUpdate(
+        latitude=17.4065, longitude=78.4772, accuracy_meters=25
+    ).accuracy_meters == 25
 
     class RoleDb:
         def __init__(self, managed_user) -> None:
@@ -109,6 +138,7 @@ async def main() -> None:
         phone=None,
         location=None,
         role=UserRole.CUSTOMER.value,
+        shop_name=None,
     )
     role_db = RoleDb(promoted_user)
     await update_managed_user(
@@ -129,12 +159,18 @@ async def main() -> None:
 
     vendor = SimpleNamespace(
         id=42,
+        full_name="Vendor Test",
+        shop_name="Vendor Test Shop",
+        email="vendor@example.com",
+        phone="9999999999",
         role=UserRole.VENDOR.value,
         vendor_pickup_address=None,
         vendor_pickup_place_id=None,
         vendor_pickup_latitude=None,
         vendor_pickup_longitude=None,
         vendor_pickup_geocoded_at=None,
+        vendor_delivery_pricing="platform",
+        vendor_delivery_fee=0,
     )
     await update_my_vendor_pickup(
         VendorPickupUpdate(
@@ -148,6 +184,46 @@ async def main() -> None:
     )
     assert vendor.vendor_pickup_place_id == resolved.place_id
     assert vendor.vendor_pickup_latitude == browser_location.latitude
+    assert resolve_fulfilment_method(vendor, "home_delivery") == "platform_delivery"
+    assert resolve_fulfilment_method(vendor, "customer_self_delivery") == "customer_self_delivery"
+    assert resolve_fulfilment_method(vendor, "customer_self_pickup") == "customer_self_pickup"
+    await update_my_vendor_delivery_settings(
+        VendorDeliverySettingsUpdate(
+            pricing="vendor",
+            delivery_fee=Decimal("125.50"),
+        ),
+        current_user=vendor,
+        db=FakeDb(),
+    )
+    assert vendor.vendor_delivery_pricing == "vendor"
+    assert vendor.vendor_delivery_fee == 125.5
+    assert resolve_fulfilment_method(vendor, "home_delivery") == "vendor_delivery"
+    address.id = 99
+    address.google_place_id = "osm:node:99"
+    address.latitude = 17.50
+    address.longitude = 78.40
+    address.geocoded_at = datetime.now(timezone.utc)
+    vendor.vendor_pickup_geocoded_at = datetime.now(timezone.utc)
+    vendor_quote = (await prepare_delivery_quotes(
+        [vendor], address, FakeDb(), fulfilment_method="home_delivery"
+    ))[0]
+    assert vendor_quote.fulfilment_method == "vendor_delivery"
+    assert vendor_quote.delivery_cost == 125.5
+    assert vendor_quote.distance_meters == 0
+    vendor_token, _ = _create_quote_token(vendor_quote, address.id)
+    verified_vendor_quote = (await prepare_delivery_quotes(
+        [vendor],
+        address,
+        FakeDb(),
+        {vendor.id: vendor_token},
+        fulfilment_method="home_delivery",
+    ))[0]
+    assert verified_vendor_quote.delivery_cost == 125.5
+    pickup_quote = (await prepare_delivery_quotes(
+        [vendor], address, FakeDb(), fulfilment_method="customer_self_pickup"
+    ))[0]
+    assert pickup_quote.delivery_cost == 0
+    assert pickup_quote.destination_address == vendor.vendor_pickup_address
 
     settings = DeliverySettingsUpdate(
         price_per_100m=Decimal("2.50"),
@@ -237,6 +313,47 @@ async def main() -> None:
             setattr(app_settings, name, value)
 
     await init_db_and_seed_admin()
+    marker = uuid4().hex
+    async with engine.connect() as connection:
+        transaction = await connection.begin()
+        try:
+            async with AsyncSession(
+                bind=connection,
+                expire_on_commit=False,
+                join_transaction_mode="create_savepoint",
+            ) as db:
+                customer = User(full_name="Delivery Customer", email=f"delivery-customer-{marker}@example.com", hashed_password="test", role=UserRole.CUSTOMER.value)
+                persisted_vendor = User(full_name="Delivery Vendor", email=f"delivery-vendor-{marker}@example.com", hashed_password="test", role=UserRole.VENDOR.value, shop_name="Delivery Test Shop")
+                agent = User(full_name="Delivery Agent", email=f"delivery-agent-{marker}@example.com", hashed_password="test", role=UserRole.DELIVERY_AGENT.value)
+                administrator = User(full_name="Delivery Admin", email=f"delivery-admin-{marker}@example.com", hashed_password="test", role=UserRole.ADMIN.value)
+                db.add_all([customer, persisted_vendor, agent, administrator])
+                await db.flush()
+                persisted_address = DeliveryAddress(user_id=customer.id, recipient_name=customer.full_name, phone_number="9999999999", street_address="Customer address", city="Hyderabad", state="Telangana", postal_code="500001")
+                db.add(persisted_address)
+                await db.flush()
+                persisted_order = Order(user_id=customer.id, address_id=persisted_address.id, vendor_id=persisted_vendor.id, total_amount=100, status=OrderStatus.READY_FOR_SHIPPING)
+                db.add(persisted_order)
+                await db.flush()
+                persisted_delivery = Delivery(order_id=persisted_order.id, vendor_id=persisted_vendor.id, fulfilment_method="platform_delivery", provider_name="Test provider", provider_email="dispatch@example.com", maps_provider="openstreetmap", origin_address="Vendor pickup", origin_latitude=17.40, origin_longitude=78.40, destination_address="Customer address", destination_latitude=17.50, destination_longitude=78.50, distance_meters=1000, duration_seconds=600, price_per_100m=1, delivery_cost=10, status="booked")
+                db.add(persisted_delivery)
+                await db.flush()
+                ensure_tracking_number(persisted_delivery)
+                await db.commit()
+
+                assigned = await assign_delivery_agent(persisted_delivery.id, DeliveryAssignmentUpdate(delivery_agent_id=agent.id), administrator, db)
+                assert assigned["delivery_agent_id"] == agent.id
+                assert assigned["status"] == "booked"
+                await update_delivery_agent_location(DeliveryAgentLocationUpdate(latitude=17.41, longitude=78.41, accuracy_meters=20), agent, db)
+                picked_up = await update_assigned_delivery_status(persisted_delivery.id, DeliveryAgentStatusUpdate(status="picked_up"), agent, db)
+                assert picked_up["status"] == "picked_up"
+                assert (await db.get(Order, persisted_order.id)).status == OrderStatus.SHIPPED
+                in_transit = await update_assigned_delivery_status(persisted_delivery.id, DeliveryAgentStatusUpdate(status="in_transit"), agent, db)
+                assert in_transit["status"] == "in_transit"
+                delivered = await update_assigned_delivery_status(persisted_delivery.id, DeliveryAgentStatusUpdate(status="delivered"), agent, db)
+                assert delivered["status"] == "delivered"
+                assert (await db.get(Order, persisted_order.id)).status == OrderStatus.DELIVERED
+        finally:
+            await transaction.rollback()
     async with AsyncSessionLocal() as db:
         # The new table must be selectable after startup compatibility runs.
         await db.execute(select(DeliverySettings).limit(1))
@@ -244,10 +361,16 @@ async def main() -> None:
     paths = app.openapi()["paths"]
     assert "/api/delivery/quote" in paths
     assert "/api/addresses/vendor-pickup" in paths
+    assert "/api/addresses/vendor-delivery-settings" in paths
     assert "/api/admin/delivery/settings" in paths
     assert "/api/admin/delivery/{delivery_id}" in paths
+    assert "/api/admin/delivery/agents" in paths
+    assert "/api/admin/delivery/{delivery_id}/assignment" in paths
+    assert "/api/delivery-agent/location" in paths
+    assert "/api/delivery-agent/deliveries" in paths
+    assert "/api/delivery-agent/deliveries/{delivery_id}/status" in paths
     await engine.dispose()
-    print("Delivery pricing, OSM provider contract, migrations, and API routes passed")
+    print("Delivery pricing, agent workflow, OSM provider contract, migrations, and API routes passed")
 
 
 if __name__ == "__main__":

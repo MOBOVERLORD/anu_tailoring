@@ -224,6 +224,8 @@ The repository is ready for Google Cloud Run:
    - A secret containing the JWT signing key.
    - A secret containing the restricted Google Maps Platform API key.
    - A secret containing the Resend sending API key.
+   - Separate secrets containing the Razorpay Key ID and Key Secret. Use Test
+     Mode keys outside production and rotate any key that has been shared.
 
    The database URL should use the async PostgreSQL driver and URL-encode any
    special characters in the password:
@@ -247,7 +249,7 @@ $env:GCP_DESIGN_BUCKET="YOUR_PRIVATE_DESIGN_BUCKET"
 $env:GCP_SERVICE_ACCOUNT="YOUR_RUNTIME_SERVICE_ACCOUNT_EMAIL"
 
 .\deploy-gcp.cmd `
-  --set-secrets=DATABASE_URL=YOUR_DATABASE_SECRET:latest,SECRET_KEY=YOUR_JWT_SECRET:latest,GOOGLE_MAPS_API_KEY=YOUR_MAPS_KEY_SECRET:latest
+  --set-secrets=DATABASE_URL=YOUR_DATABASE_SECRET:latest,SECRET_KEY=YOUR_JWT_SECRET:latest,GOOGLE_MAPS_API_KEY=YOUR_MAPS_KEY_SECRET:latest,RAZORPAY_KEY_ID=YOUR_RAZORPAY_KEY_ID_SECRET:latest,RAZORPAY_KEY_SECRET=YOUR_RAZORPAY_KEY_SECRET_SECRET:latest
 ```
 
 The command builds from the repository `Dockerfile`, deploys the Cloud Run

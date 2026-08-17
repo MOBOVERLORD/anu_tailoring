@@ -21,6 +21,7 @@ class OrderStatus(str, enum.Enum):
     FABRIC_CUTTING = "fabric_cutting"
     STITCHING = "stitching"
     QUALITY_CHECK = "quality_check"
+    READY_FOR_SHIPPING = "ready_for_shipping"
     SHIPPED = "shipped"
     DELIVERED = "delivered"
     CANCELLED = "cancelled"
@@ -31,6 +32,7 @@ class UserRole(str, enum.Enum):
     VENDOR = "vendor"
     ADMIN = "admin"
     SUPER_ADMIN = "super_admin"
+    DELIVERY_AGENT = "delivery_agent"
 
 
 class DesignStatus(str, enum.Enum):
@@ -95,6 +97,22 @@ class User(Base):
     vendor_pickup_latitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     vendor_pickup_longitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     vendor_pickup_geocoded_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Vendors can keep platform distance pricing or publish one fixed fee for
+    # their own delivery service. Customer-arranged fulfilment remains free.
+    vendor_delivery_pricing: Mapped[str] = mapped_column(
+        String(20), default="platform", server_default="platform"
+    )
+    vendor_delivery_fee: Mapped[float] = mapped_column(
+        Float, default=0, server_default="0"
+    )
+    delivery_agent_latitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    delivery_agent_longitude: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    delivery_agent_location_accuracy_meters: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True
+    )
+    delivery_agent_location_updated_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     hashed_password: Mapped[str] = mapped_column(String(255))
@@ -584,6 +602,18 @@ class OrderInvoice(Base):
         String(30), default="not_required", server_default="not_required", index=True
     )
     payment_reference: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    payment_gateway: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    gateway_order_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    gateway_payment_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    gateway_amount_paise: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    final_payment_status: Mapped[str] = mapped_column(
+        String(30), default="pending", server_default="pending", index=True
+    )
+    final_payment_gateway: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    final_gateway_order_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    final_gateway_payment_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    final_gateway_amount_paise: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    final_paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     cloth_received: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     cloth_bill_bucket_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     cloth_bill_object_name: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
@@ -647,6 +677,18 @@ class VendorInvoice(Base):
         String(30), default="not_required", server_default="not_required", index=True
     )
     payment_reference: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    payment_gateway: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    gateway_order_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    gateway_payment_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    gateway_amount_paise: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    final_payment_status: Mapped[str] = mapped_column(
+        String(30), default="pending", server_default="pending", index=True
+    )
+    final_payment_gateway: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    final_gateway_order_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    final_gateway_payment_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    final_gateway_amount_paise: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    final_paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     cloth_received: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"
     )
@@ -785,6 +827,15 @@ class Delivery(Base):
     vendor_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"), index=True
     )
+    delivery_agent_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    assigned_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    fulfilment_method: Mapped[str] = mapped_column(
+        String(30), default="platform_delivery", server_default="platform_delivery", index=True
+    )
     provider_name: Mapped[str] = mapped_column(String(150))
     provider_email: Mapped[str] = mapped_column(String(255))
     provider_phone: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
@@ -814,6 +865,9 @@ class Delivery(Base):
     status_updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow
     )
+    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    picked_up_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
@@ -822,3 +876,5 @@ class Delivery(Base):
     order: Mapped[Optional["Order"]] = relationship(back_populates="deliveries")
     product_order: Mapped[Optional["ProductOrder"]] = relationship(back_populates="delivery")
     vendor: Mapped["User"] = relationship(foreign_keys=[vendor_id])
+    delivery_agent: Mapped[Optional["User"]] = relationship(foreign_keys=[delivery_agent_id])
+    assigned_by: Mapped[Optional["User"]] = relationship(foreign_keys=[assigned_by_id])

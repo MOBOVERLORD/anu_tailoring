@@ -15,6 +15,7 @@ from app.schemas import (
     DeliveryAddressResponse,
     ResolvedLocationResponse,
     UserResponse,
+    VendorDeliverySettingsUpdate,
     VendorPickupUpdate,
 )
 from app.auth import get_current_user
@@ -187,6 +188,26 @@ async def update_my_vendor_pickup(
     current_user.vendor_pickup_latitude = pickup.pickup_latitude
     current_user.vendor_pickup_longitude = pickup.pickup_longitude
     current_user.vendor_pickup_geocoded_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(current_user)
+    return current_user
+
+
+@router.put("/vendor-delivery-settings", response_model=UserResponse)
+async def update_my_vendor_delivery_settings(
+    payload: VendorDeliverySettingsUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role != UserRole.VENDOR.value:
+        raise HTTPException(
+            status_code=403,
+            detail="Only vendor accounts can configure delivery pricing",
+        )
+    current_user.vendor_delivery_pricing = payload.pricing
+    current_user.vendor_delivery_fee = (
+        float(payload.delivery_fee) if payload.pricing == "vendor" else 0
+    )
     await db.commit()
     await db.refresh(current_user)
     return current_user

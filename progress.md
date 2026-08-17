@@ -701,6 +701,137 @@ The presets follow Indian vocational tailoring material rather than one universa
   application for crawler files; both responses validate as HTTP 200 with the proper
   XML/plain-text media types and use `PUBLIC_APP_URL` for production URLs.
 
+## Razorpay Standard Checkout
+
+- Integrated Razorpay Standard Web Checkout into the existing customer cloth-payment
+  gate for both combined vendor orders and legacy single-design orders. Invoice amounts
+  are derived and validated on the backend in paise; the browser cannot choose or alter
+  the payable amount.
+- Added authenticated create-order and verify-payment endpoints. The backend reuses an
+  existing provider order for retry safety, verifies the Razorpay HMAC signature, fetches
+  and captures an authorized payment when necessary, then verifies provider order,
+  currency, amount, and captured status before marking an invoice paid.
+- Added provider-neutral gateway identifiers to combined and legacy invoice records,
+  unique partial indexes for provider order/payment IDs, startup compatibility changes,
+  and reset behavior when a vendor revises an invoice.
+- Replaced the customer’s manual offline transaction-reference input with a secure
+  Razorpay modal, including script-load, modal-dismiss, failed-payment, and backend-error
+  feedback. The Key Secret remains backend-only; the authenticated create-order response
+  exposes only the publishable Key ID required by Checkout.
+- Split checkout entry into **UPI / QR** and **Cards & more**. The UPI action uses
+  Razorpay's supported display configuration to open a focused UPI-only experience,
+  reducing the cramped multi-method QR screen while preserving every other payment
+  method through the secondary action. No unsupported cross-origin iframe styling is used.
+- Added the missing combined-invoice cloth-bill proof controls so vendors can attach or
+  replace the required proof and customers can review it before paying.
+- Added safe environment placeholders and Cloud Run Secret Manager deployment guidance.
+  Local `.env` remains ignored by Git.
+- Verification passed: Razorpay SDK installation, Python compilation, FastAPI route/schema
+  loading, persisted create/verify/paid-state workflow with a fake provider, existing
+  order-invoice workflow, frontend lint, and the Vite production build.
+
+## Vendor tailoring progress controls
+
+- Hide the `Tailoring status is unlocked` guidance once every active tailoring item is completed, so shipping and delivered orders no longer show a stale action prompt.
+
+- Fixed the missing post-approval controls for vendor-scoped combined orders. When the
+  customer supplies cloth, the vendor can now confirm receipt once for the combined
+  invoice; every active tailoring line then becomes ready to start.
+- Added sequential, guarded status actions to each design in both combined and legacy
+  orders: **Start tailoring**, **Move to stitching**, **Move to quality check**, and
+  **Mark tailoring completed**. The backend prevents skipping stages and rechecks invoice,
+  cloth-receipt, and cloth-payment gates before work starts.
+- Customer notifications are created for cloth receipt and every tailoring status change,
+  while the order-level status is synchronized with its item progress.
+- Added responsive progress action cards and confirmation dialogs so vendor actions remain
+  visible alongside each design on desktop and mobile.
+- Combined design cards now read approval, payment, and cloth readiness from the shared
+  combined invoice instead of the empty legacy per-design invoice, fixing stale “not
+  started / waiting” journey labels after invoice approval.
+- Extended the existing authenticated order-chat WebSocket with database-backed workflow
+  events. Customer, vendor, and administrator screens now receive order, tailoring,
+  invoice, payment, and cloth-gate status changes without manually refreshing, including
+  when the two users are connected to different Cloud Run instances.
+- Refined combined order cards with inset design, journey, action, and chat panels,
+  consistent rounded borders, and additional desktop/mobile spacing so controls no longer
+  touch the outer card edges.
+- Verification passed for customer- and vendor-supplied cloth, legacy and combined invoice
+  gates, all four tailoring transitions, frontend lint/build, and Python compilation.
+
+## Flexible vendor and customer fulfilment
+
+- Vendors can now choose **Platform distance pricing** or **My own fixed delivery
+  price** in Profile → Workshop & pickup. A vendor fee is validated on the backend
+  and charged once for every design/product grouped into that vendor order.
+- Customer checkout now offers three separate fulfilment choices: **Deliver to me**,
+  **Self-delivery**, and **Self-pickup**. The two customer-arranged choices are
+  enforced as ₹0 by the backend and cannot be changed through browser payloads.
+- Home delivery automatically resolves to the vendor's saved pricing mode. Signed
+  quote tokens bind the vendor, address, provider, fulfilment method, and current
+  price; stale quotes are rejected when vendor settings change.
+- Each persisted delivery now records its fulfilment method. Customer/vendor order
+  views and admin delivery management distinguish platform delivery, vendor delivery,
+  customer-arranged delivery, and workshop pickup without showing route controls for
+  modes that do not use routing.
+- Existing orders migrate as platform delivery, and existing vendors default to
+  platform pricing. Verification passed for schema compatibility, vendor settings,
+  signed fixed-fee quotes, zero-cost pickup, combined invoice totals, Python compile,
+  frontend lint, and the Vite production build.
+
+## Final order payment and shipping gate
+
+- Separated the optional vendor-cloth advance from the final order balance. Completed
+  invoices now retain an independent final-payment status instead of incorrectly showing
+  **Payment not required** when cloth cost is zero.
+- Customer order cards expose Razorpay Checkout after every active tailoring line is
+  completed. The backend derives the amount from the locked invoice and deducts an
+  already captured cloth advance so it is never charged twice.
+- Razorpay create/verify calls now support cloth and final-payment stages with separate,
+  unique provider order/payment identifiers. Final payment is marked paid only after
+  signature verification and captured amount, currency, and order validation.
+- Vendors receive a final-payment notification and can move a paid completed order to
+  shipping. The backend rejects early dispatch; customer self-pickup instead presents a
+  fulfilment-aware **Ready for pickup** action and notification.
+- Added final-payment fields to startup schema compatibility, API responses, frontend
+  live workflow updates, and invoice reset handling. Offline persisted verification now
+  covers cloth advance, deducted final balance, payment capture, and the gated shipping
+  transition.
+- Verification passed: Python compilation, Razorpay lifecycle script, order-invoice
+  workflow script, frontend lint, Vite production build, and `git diff --check`.
+
+## Delivery-agent dispatch and tracked handoff
+
+- Delivery-management order cards can now be expanded or collapsed from their summary header; delivered and cancelled records start collapsed while active work remains open.
+
+- Split vendor readiness from courier movement. A vendor now marks a fully paid,
+  completed order **Ready for shipping**; its delivery becomes **Booked** rather
+  than incorrectly becoming **In transit** before anyone collects it.
+- Added stable automatic tracking references in the `VST-D########` format at the
+  vendor handoff. The combined order stores the same reference, and admin delivery
+  management presents it as generated read-only data.
+- Added the `delivery_agent` account role. Super admins can assign this role from
+  Staff management; role changes revoke existing sessions so permissions are
+  applied on the next sign-in.
+- Added admin dispatch controls for booked platform deliveries. Admins can assign
+  or reassign an active delivery agent, see whether the agent has shared a recent
+  position, and open a route from that position to the next stop.
+- Added a dedicated responsive Delivery Partner workspace. Agents see only their
+  assigned jobs, customer contact details, vendor pickup and customer destination,
+  and guarded actions for **Confirm pickup → Start delivery → Mark delivered**.
+  Pickup synchronizes the order to **Shipped**; final handoff synchronizes it to
+  **Delivered** and notifies both customer and vendor.
+- Agent position sharing is explicit, not continuous: pressing **Share/Update my
+  location** uses browser geolocation, stores the coordinates and accuracy on the
+  backend, and makes them visible only to that agent and administrators. Generic
+  user/order profile payloads do not expose courier coordinates.
+- Added startup-compatible database evolution for the role, agent assignment,
+  location, assignment/pickup/delivery timestamps, and the native PostgreSQL order
+  status. Production security headers now allow same-origin geolocation.
+- Verification passed: full persisted assignment/location/status lifecycle,
+  automatic tracking generation, authorization route registration, payment-to-
+  readiness regression coverage, Python compilation, Vite TypeScript production
+  build, and `git diff --check`.
+
 ## Recommended next milestone
 
 1. Replace startup compatibility statements with versioned Alembic migrations
@@ -712,8 +843,8 @@ The presets follow Indian vocational tailoring material rather than one universa
    vendor business profiles, admin audit logs, and forced temporary-password change.
 5. Move persisted monetary columns from FLOAT to PostgreSQL NUMERIC, generate
    image thumbnails, and add server-side catalog/order search before large-scale use.
-6. Integrate a payment gateway and replace the current offline payment-reference
-   verification flow before accepting production payments.
+6. Add Razorpay webhooks, payment reconciliation, refunds, and production audit
+   reporting before accepting live payments.
 
 ## Resume prompt
 

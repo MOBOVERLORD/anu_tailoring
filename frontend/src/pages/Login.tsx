@@ -2,7 +2,7 @@ import { useState } from "react"
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, Ruler, Scissors, Sparkles } from "lucide-react"
 import { Link, Navigate, useNavigate } from "react-router-dom"
 import toast from "react-hot-toast"
-import { api, getAccessToken, setSession } from "@/lib/api"
+import { api, getAccessToken, getCurrentUser, setSession } from "@/lib/api"
 
 interface TokenResponse {
   access_token: string
@@ -26,8 +26,9 @@ const Login = () => {
         body: JSON.stringify({ email, password }),
       })
       setSession(data.access_token)
+      const profile = await getCurrentUser(true)
       toast.success("Welcome back")
-      navigate("/")
+      navigate(profile.role === "delivery_agent" ? "/delivery-agent" : "/")
     } catch (error) {
       toast.error((error as Error).message)
     } finally {

@@ -7,8 +7,8 @@ import { MapAttribution } from "@/components/MapAttribution"
 import { api } from "@/lib/api"
 import type { ProductOrder, ProductOrderPage, ProductOrderStatus, UserProfile } from "@/types/api"
 
-const labels: Record<ProductOrderStatus, string> = { placed: "Placed", confirmed: "Confirmed", packed: "Packed", shipped: "Shipped", delivered: "Delivered", cancelled: "Cancelled" }
-const nextStatuses: Record<ProductOrderStatus, ProductOrderStatus[]> = { placed: ["confirmed", "cancelled"], confirmed: ["packed", "cancelled"], packed: ["shipped", "cancelled"], shipped: ["delivered"], delivered: [], cancelled: [] }
+const labels: Record<ProductOrderStatus, string> = { placed: "Placed", confirmed: "Confirmed", packed: "Packed", ready_for_shipping: "Ready for shipping", shipped: "Shipped", delivered: "Delivered", cancelled: "Cancelled" }
+const nextStatuses: Record<ProductOrderStatus, ProductOrderStatus[]> = { placed: ["confirmed", "cancelled"], confirmed: ["packed", "cancelled"], packed: ["ready_for_shipping", "cancelled"], ready_for_shipping: [], shipped: [], delivered: [], cancelled: [] }
 
 const endpoint = (role: UserProfile["role"], mode: "purchases" | "sales") => role === "customer" || (role === "vendor" && mode === "purchases") ? "/api/product-orders" : role === "vendor" ? "/api/product-orders/vendor" : "/api/admin/product-orders"
 

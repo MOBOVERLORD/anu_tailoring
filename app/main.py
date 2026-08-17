@@ -25,6 +25,7 @@ from app import (
     media,
     notifications,
     orders,
+    payments,
     products,
     vendors,
     vendor_designs,
@@ -34,6 +35,12 @@ from app import (
 async def init_db_and_seed_admin():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        if conn.dialect.name == "postgresql":
+            # SQLAlchemy's native enum is not expanded by create_all for an
+            # existing database. Add the vendor handoff stage idempotently.
+            await conn.execute(text(
+                "ALTER TYPE orderstatus ADD VALUE IF NOT EXISTS 'READY_FOR_SHIPPING'"
+            ))
         # The project does not use Alembic yet. Keep existing development
         # databases compatible while the initial schema is still evolving.
         await conn.execute(text(
@@ -109,6 +116,12 @@ async def init_db_and_seed_admin():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_requested_at TIMESTAMPTZ",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_request_reviewed_at TIMESTAMPTZ",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_request_reviewed_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_delivery_pricing VARCHAR(20) NOT NULL DEFAULT 'platform'",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS vendor_delivery_fee DOUBLE PRECISION NOT NULL DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS delivery_agent_latitude DOUBLE PRECISION",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS delivery_agent_longitude DOUBLE PRECISION",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS delivery_agent_location_accuracy_meters DOUBLE PRECISION",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS delivery_agent_location_updated_at TIMESTAMPTZ",
         ):
             await conn.execute(text(statement))
         await conn.execute(text(
@@ -132,6 +145,26 @@ async def init_db_and_seed_admin():
         await conn.execute(text(
             "ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS maps_provider "
             "VARCHAR(30) NOT NULL DEFAULT 'google'"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS fulfilment_method "
+            "VARCHAR(30) NOT NULL DEFAULT 'platform_delivery'"
+        ))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_deliveries_fulfilment_method "
+            "ON deliveries (fulfilment_method)"
+        ))
+        for statement in (
+            "ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS delivery_agent_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
+            "ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS assigned_by_id INTEGER REFERENCES users(id) ON DELETE SET NULL",
+            "ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ",
+            "ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS picked_up_at TIMESTAMPTZ",
+            "ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMPTZ",
+        ):
+            await conn.execute(text(statement))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_deliveries_agent_status_created_at "
+            "ON deliveries (delivery_agent_id, status, created_at DESC)"
         ))
         await conn.execute(text(
             "ALTER TABLE measurement_profiles "
@@ -252,6 +285,43 @@ async def init_db_and_seed_admin():
             "ALTER TABLE vendor_invoices ADD COLUMN IF NOT EXISTS "
             "revision INTEGER NOT NULL DEFAULT 1"
         ))
+        for table_name in ("vendor_invoices", "order_invoices"):
+            for column_definition in (
+                "payment_gateway VARCHAR(30)",
+                "gateway_order_id VARCHAR(100)",
+                "gateway_payment_id VARCHAR(100)",
+                "gateway_amount_paise INTEGER",
+            ):
+                await conn.execute(text(
+                    f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {column_definition}"
+                ))
+            await conn.execute(text(
+                f"CREATE UNIQUE INDEX IF NOT EXISTS uq_{table_name}_gateway_order_id "
+                f"ON {table_name} (gateway_order_id) WHERE gateway_order_id IS NOT NULL"
+            ))
+            await conn.execute(text(
+                f"CREATE UNIQUE INDEX IF NOT EXISTS uq_{table_name}_gateway_payment_id "
+                f"ON {table_name} (gateway_payment_id) WHERE gateway_payment_id IS NOT NULL"
+            ))
+            for column_definition in (
+                "final_payment_status VARCHAR(30) NOT NULL DEFAULT 'pending'",
+                "final_payment_gateway VARCHAR(30)",
+                "final_gateway_order_id VARCHAR(100)",
+                "final_gateway_payment_id VARCHAR(100)",
+                "final_gateway_amount_paise INTEGER",
+                "final_paid_at TIMESTAMPTZ",
+            ):
+                await conn.execute(text(
+                    f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {column_definition}"
+                ))
+            await conn.execute(text(
+                f"CREATE UNIQUE INDEX IF NOT EXISTS uq_{table_name}_final_gateway_order_id "
+                f"ON {table_name} (final_gateway_order_id) WHERE final_gateway_order_id IS NOT NULL"
+            ))
+            await conn.execute(text(
+                f"CREATE UNIQUE INDEX IF NOT EXISTS uq_{table_name}_final_gateway_payment_id "
+                f"ON {table_name} (final_gateway_payment_id) WHERE final_gateway_payment_id IS NOT NULL"
+            ))
         # Hot list/detail paths. PostgreSQL does not automatically index foreign
         # keys, so create the composite indexes the paginated APIs rely on.
         await conn.execute(text(
@@ -405,7 +475,7 @@ async def security_headers(request: Request, call_next):
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault(
         "Permissions-Policy",
-        "camera=(), microphone=(), geolocation=(), payment=()",
+        "camera=(), microphone=(), geolocation=(self), payment=(self)",
     )
     if not settings.is_development:
         response.headers.setdefault(
@@ -414,10 +484,14 @@ async def security_headers(request: Request, call_next):
         )
         response.headers.setdefault(
             "Content-Security-Policy",
-            "default-src 'self'; img-src 'self' blob: data:; "
+            "default-src 'self'; "
+            "script-src 'self' https://checkout.razorpay.com https://*.razorpay.com; "
+            "img-src 'self' blob: data: https://*.razorpay.com; "
             "style-src 'self' 'unsafe-inline'; font-src 'self'; "
-            "connect-src 'self'; object-src 'none'; base-uri 'self'; "
-            "frame-ancestors 'none'; form-action 'self'",
+            "connect-src 'self' https://api.razorpay.com https://*.razorpay.com; "
+            "frame-src https://api.razorpay.com https://*.razorpay.com; "
+            "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; "
+            "form-action 'self' https://api.razorpay.com",
         )
     if (
         request.method in {"POST", "PUT", "PATCH", "DELETE"}
@@ -440,6 +514,7 @@ app.include_router(measurements.admin_router)
 app.include_router(addresses.router)
 app.include_router(orders.router)
 app.include_router(orders.admin_router)
+app.include_router(payments.router)
 app.include_router(products.catalog_router)
 app.include_router(products.vendor_router)
 app.include_router(products.admin_router)
@@ -447,6 +522,7 @@ app.include_router(products.orders_router)
 app.include_router(products.admin_orders_router)
 app.include_router(deliveries.router)
 app.include_router(deliveries.admin_router)
+app.include_router(deliveries.agent_router)
 app.include_router(vendor_designs.router)
 app.include_router(vendors.router)
 app.include_router(admin.router)

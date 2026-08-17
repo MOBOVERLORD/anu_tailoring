@@ -236,6 +236,7 @@ require_customer = require_roles(UserRole.CUSTOMER.value)
 require_buyer = require_roles(UserRole.CUSTOMER.value, UserRole.VENDOR.value)
 require_admin = require_roles(UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value)
 require_super_admin = require_roles(UserRole.SUPER_ADMIN.value)
+require_delivery_agent = require_roles(UserRole.DELIVERY_AGENT.value)
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)

@@ -91,6 +91,14 @@ class Settings(BaseSettings):
     # in Cloud Run; never expose it through a VITE_ browser variable.
     GOOGLE_MAPS_API_KEY: Optional[str] = None
 
+    # Razorpay Standard Checkout. Both credentials stay on the FastAPI server;
+    # the authenticated create-order response exposes only the Key ID needed
+    # by Checkout.js. Use Test Mode locally and Secret Manager in Cloud Run.
+    RAZORPAY_KEY_ID: Optional[str] = None
+    RAZORPAY_KEY_SECRET: Optional[str] = None
+    RAZORPAY_CURRENCY: str = "INR"
+    RAZORPAY_HTTP_TIMEOUT_SECONDS: float = 10.0
+
     # Admin Account Initial Credentials
     ADMIN_NAME: str = "System Admin"
     ADMIN_EMAIL: Optional[EmailStr] = None

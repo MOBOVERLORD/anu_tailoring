@@ -14,6 +14,7 @@ from app.models import (
     DesignStatus,
     MeasurementProfile,
     Order,
+    OrderInvoice,
     OrderItem,
     OrderStatus,
     User,
@@ -22,7 +23,10 @@ from app.models import (
 )
 from app.orders import (
     add_order_comment,
+    advance_combined_item_work,
+    advance_vendor_work,
     cancel_customer_order,
+    confirm_combined_customer_cloth,
     confirm_customer_cloth_received,
     decide_vendor_invoice,
     issue_vendor_invoice,
@@ -54,6 +58,7 @@ async def expect_conflict(action) -> None:
 
 
 async def verify() -> None:
+    engine.echo = False
     marker = uuid4().hex
     async with engine.connect() as connection:
         transaction = await connection.begin()
@@ -195,6 +200,12 @@ async def verify() -> None:
                 assert verified["work_status"] == "ready_to_start"
                 started = await start_vendor_work(vendor_cloth_item.id, vendor, db)
                 assert started["work_status"] == "fabric_cutting"
+                stitched = await advance_vendor_work(vendor_cloth_item.id, vendor, db)
+                assert stitched["work_status"] == "stitching"
+                checked = await advance_vendor_work(vendor_cloth_item.id, vendor, db)
+                assert checked["work_status"] == "quality_check"
+                completed = await advance_vendor_work(vendor_cloth_item.id, vendor, db)
+                assert completed["work_status"] == "completed"
 
                 await save_vendor_invoice(
                     customer_cloth_item.id,
@@ -219,6 +230,48 @@ async def verify() -> None:
                 assert received["work_status"] == "ready_to_start"
                 started = await start_vendor_work(customer_cloth_item.id, vendor, db)
                 assert started["work_status"] == "fabric_cutting"
+
+                combined_order = Order(
+                    user_id=customer.id,
+                    vendor_id=vendor.id,
+                    address_id=address.id,
+                    total_amount=1200,
+                    status=OrderStatus.CONFIRMED,
+                )
+                db.add(combined_order)
+                await db.flush()
+                combined_item = OrderItem(
+                    order_id=combined_order.id,
+                    design_id=design.id,
+                    measurement_profile_id=measurement.id,
+                    measurement_snapshot=snapshot,
+                    cloth_source="customer_provided",
+                    price=1200,
+                    work_status="awaiting_cloth",
+                )
+                combined_invoice = OrderInvoice(
+                    order_id=combined_order.id,
+                    vendor_id=vendor.id,
+                    invoice_number=f"VERIFY-COMBINED-{marker[:16]}",
+                    service_amount=1200,
+                    cloth_source="customer_provided",
+                    cloth_type="Customer cotton",
+                    cloth_requirement="Three metres supplied by the customer",
+                    cloth_cost=0,
+                    status="approved",
+                    payment_status="not_required",
+                )
+                db.add_all([combined_item, combined_invoice])
+                await db.commit()
+                combined_received = await confirm_combined_customer_cloth(
+                    combined_order.id, vendor, db
+                )
+                assert combined_received["order_items"][0]["work_status"] == "ready_to_start"
+                for expected in ("fabric_cutting", "stitching", "quality_check", "completed"):
+                    combined_updated = await advance_combined_item_work(
+                        combined_order.id, combined_item.id, vendor, db
+                    )
+                    assert combined_updated["order_items"][0]["work_status"] == expected
 
                 # Invoice acceptance is the irreversible cancellation boundary.
                 await expect_conflict(cancel_customer_order(
@@ -298,7 +351,7 @@ async def verify() -> None:
         finally:
             await transaction.rollback()
 
-    print("Order workflow passed: invoice gates, rejection, cancellation, and acceptance lock")
+    print("Order workflow passed: invoice gates, cloth receipt, vendor progress, rejection, cancellation, and acceptance lock")
 
 
 if __name__ == "__main__":

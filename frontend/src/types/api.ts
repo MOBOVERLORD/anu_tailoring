@@ -15,7 +15,9 @@ export interface UserProfile {
   vendor_pickup_address: string | null
   vendor_pickup_latitude: number | null
   vendor_pickup_longitude: number | null
-  role: "customer" | "vendor" | "admin" | "super_admin"
+  vendor_delivery_pricing: "platform" | "vendor"
+  vendor_delivery_fee: number
+  role: "customer" | "vendor" | "admin" | "super_admin" | "delivery_agent"
   is_active: boolean
   created_at: string
 }
@@ -200,7 +202,7 @@ export interface ResolvedLocation {
   location_token: string
 }
 
-export type OrderStatus = "pending" | "confirmed" | "fabric_cutting" | "stitching" | "quality_check" | "shipped" | "delivered" | "cancelled"
+export type OrderStatus = "pending" | "confirmed" | "fabric_cutting" | "stitching" | "quality_check" | "ready_for_shipping" | "shipped" | "delivered" | "cancelled"
 
 export type WorkStatus = "awaiting_invoice" | "awaiting_approval" | "awaiting_cloth_payment" | "awaiting_payment_verification" | "awaiting_cloth" | "ready_to_start" | "fabric_cutting" | "stitching" | "quality_check" | "completed" | "rejected" | "cancelled"
 
@@ -239,6 +241,8 @@ export interface VendorInvoice {
   status: "draft" | "issued" | "approved" | "change_requested"
   payment_status: "not_required" | "pending" | "submitted" | "paid"
   payment_reference: string | null
+  final_payment_status: "pending" | "paid"
+  final_paid_at: string | null
   cloth_received: boolean
   cloth_bill_filename: string | null
   cloth_bill_content_type: string | null
@@ -302,6 +306,7 @@ export type DeliveryStatus = "quote_ready" | "booked" | "picked_up" | "in_transi
 export interface DeliveryQuote {
   vendor_id: number
   vendor_name: string
+  fulfilment_method: "platform_delivery" | "vendor_delivery" | "customer_self_delivery" | "customer_self_pickup"
   distance_meters: number
   duration_seconds: number | null
   delivery_cost: number
@@ -331,6 +336,15 @@ export interface DeliveryRecord {
   product_order_id: number | null
   order_type: "tailoring" | "product"
   vendor_id: number
+  delivery_agent_id: number | null
+  delivery_agent_name: string | null
+  delivery_agent_phone: string | null
+  delivery_agent_latitude: number | null
+  delivery_agent_longitude: number | null
+  delivery_agent_location_accuracy_meters: number | null
+  delivery_agent_location_updated_at: string | null
+  assigned_at: string | null
+  fulfilment_method: "platform_delivery" | "vendor_delivery" | "customer_self_delivery" | "customer_self_pickup"
   vendor_name: string
   customer_name: string
   customer_phone: string | null
@@ -359,9 +373,29 @@ export interface DeliveryRecord {
   updated_at: string
 }
 
+export interface DeliveryAgentSummary {
+  id: number
+  full_name: string
+  email: string
+  phone: string | null
+  location: string | null
+  latitude: number | null
+  longitude: number | null
+  accuracy_meters: number | null
+  location_updated_at: string | null
+}
+
+export interface DeliveryAgentLocation {
+  latitude: number | null
+  longitude: number | null
+  accuracy_meters: number | null
+  location_updated_at: string | null
+}
+
 export interface OrderDelivery {
   id: number
   vendor_id: number
+  fulfilment_method: "platform_delivery" | "vendor_delivery" | "customer_self_delivery" | "customer_self_pickup"
   provider_name: string
   maps_provider: string
   destination_address: string
@@ -387,7 +421,7 @@ export interface OrderPage {
   offset: number
 }
 
-export type ProductOrderStatus = "placed" | "confirmed" | "packed" | "shipped" | "delivered" | "cancelled"
+export type ProductOrderStatus = "placed" | "confirmed" | "packed" | "ready_for_shipping" | "shipped" | "delivered" | "cancelled"
 
 export interface ProductOrder {
   id: number

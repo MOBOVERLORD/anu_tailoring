@@ -1,10 +1,12 @@
 from fastapi.testclient import TestClient
 
 from app.config import settings
+from app.database import engine
 from app.main import app
 
 
 def main() -> None:
+    engine.echo = False
     with TestClient(app) as client:
         ui_headers = {"X-Requested-With": "VastrivoUI"}
         login = client.post(
@@ -32,7 +34,14 @@ def main() -> None:
                 f"?ticket={ticket.json()['ticket']}&after_id=0"
             ) as socket:
                 assert socket.receive_json()["type"] == "ready"
-            print("Chat ticket and WebSocket handshake passed")
+                workflow = socket.receive_json()
+                assert workflow["type"] == "workflow", workflow
+                assert workflow["work_status"]
+                assert workflow["order_status"]
+                assert "invoice_status" in workflow
+                assert "payment_status" in workflow
+                assert "cloth_received" in workflow
+            print("Chat ticket, WebSocket handshake, and live workflow status passed")
         else:
             print("No existing order item; chat ticket route compile-checked")
         assert client.post("/api/auth/logout", headers=auth_headers).status_code == 204

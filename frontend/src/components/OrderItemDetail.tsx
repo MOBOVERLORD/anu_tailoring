@@ -6,8 +6,9 @@ import { ConfirmActionDialog } from "@/components/ConfirmActionDialog"
 import { OrderCancellationDialog } from "@/components/OrderCancellationDialog"
 import { VendorInvoiceDialog } from "@/components/VendorInvoiceDialog"
 import { MapAttribution } from "@/components/MapAttribution"
+import { RazorpayCheckoutButton } from "@/components/RazorpayCheckoutButton"
 import { api, apiBlob } from "@/lib/api"
-import type { Order, OrderComment, OrderItem, UserProfile, WorkStatus } from "@/types/api"
+import type { Order, OrderComment, OrderItem, OrderStatus, UserProfile, VendorInvoice, WorkStatus } from "@/types/api"
 
 const workLabels: Record<WorkStatus, string> = {
   awaiting_invoice: "Invoice required",
@@ -24,12 +25,30 @@ const workLabels: Record<WorkStatus, string> = {
   cancelled: "Cancelled by customer",
 }
 
+const progressActions: Partial<Record<WorkStatus, { label: string; next: string }>> = {
+  ready_to_start: { label: "Start tailoring", next: "fabric cutting" },
+  fabric_cutting: { label: "Move to stitching", next: "stitching" },
+  stitching: { label: "Move to quality check", next: "quality check" },
+  quality_check: { label: "Mark tailoring completed", next: "completed" },
+}
+
 interface OrderItemDetailProps {
   item: OrderItem
   order: Order
   profile: UserProfile
   onUpdated: (item: OrderItem) => void
   onOrderUpdated: (order: Order) => void
+  onWorkflowUpdated: (orderId: number, itemId: number, update: OrderWorkflowUpdate) => void
+}
+
+export interface OrderWorkflowUpdate {
+  work_status: WorkStatus
+  order_status: OrderStatus
+  invoice_status?: VendorInvoice["status"] | null
+  payment_status?: VendorInvoice["payment_status"] | null
+  final_payment_status?: VendorInvoice["final_payment_status"] | null
+  cloth_received?: boolean | null
+  cloth_source?: VendorInvoice["cloth_source"] | null
 }
 
 interface PendingConfirmation {
@@ -39,11 +58,10 @@ interface PendingConfirmation {
   action: () => Promise<boolean>
 }
 
-export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdated }: OrderItemDetailProps) => {
+export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdated, onWorkflowUpdated }: OrderItemDetailProps) => {
   const [invoiceOpen, setInvoiceOpen] = useState(false)
   const [comment, setComment] = useState("")
   const [decisionNote, setDecisionNote] = useState("")
-  const [paymentReference, setPaymentReference] = useState("")
   const [busy, setBusy] = useState<string | null>(null)
   const [printTarget, setPrintTarget] = useState(false)
   const [confirmation, setConfirmation] = useState<PendingConfirmation | null>(null)
@@ -52,7 +70,7 @@ export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdate
   const [chatStatus, setChatStatus] = useState<"connecting" | "live" | "reconnecting">("connecting")
   const latestCommentId = useRef(Math.max(0, ...item.comments.map((entry) => entry.id)))
   const chatSocket = useRef<WebSocket | null>(null)
-  const invoice = item.invoice
+  const invoice = order.combined_order ? order.invoice : item.invoice
   const delivery = order.deliveries.find((entry) => entry.vendor_id === item.design.vendor_id)
   const isVendor = profile.role === "vendor" && item.design.vendor_id === profile.id
   const isCustomer = order.customer.id === profile.id
@@ -83,10 +101,12 @@ export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdate
         chatSocket.current = socket
         socket.onopen = () => { attempt = 0; setChatStatus("live") }
         socket.onmessage = (event) => {
-          const payload = JSON.parse(event.data) as { type: string; comment?: OrderComment; message?: string }
+          const payload = JSON.parse(event.data) as { type: string; comment?: OrderComment; message?: string } & Partial<OrderWorkflowUpdate>
           if (payload.type === "message" && payload.comment) {
             latestCommentId.current = Math.max(latestCommentId.current, payload.comment.id)
             setLiveComments((current) => current.some((entry) => entry.id === payload.comment?.id) ? current : [...current, payload.comment!])
+          } else if (payload.type === "workflow" && payload.work_status && payload.order_status) {
+            onWorkflowUpdated(order.id, item.id, payload as OrderWorkflowUpdate)
           } else if (payload.type === "error" && payload.message) toast.error(payload.message)
         }
         socket.onerror = () => socket.close()
@@ -110,7 +130,7 @@ export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdate
       chatSocket.current?.close()
       chatSocket.current = null
     }
-  }, [item.id])
+  }, [item.id, onWorkflowUpdated, order.id])
 
   const rejectOrderItem = async (reason: string) => {
     setBusy("reject")
@@ -137,6 +157,29 @@ export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdate
         ...(body ? { body: JSON.stringify(body) } : {}),
       })
       onUpdated(updated)
+      return true
+    } catch (error) {
+      toast.error((error as Error).message)
+      return false
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const advanceWork = async () => {
+    const progress = progressActions[item.work_status]
+    if (!progress) return false
+    setBusy("progress")
+    try {
+      if (order.combined_order) {
+        onOrderUpdated(await api<Order>(`/api/orders/vendor/${order.id}/items/${item.id}/advance`, { method: "POST" }))
+      } else {
+        const path = item.work_status === "ready_to_start"
+          ? `/api/orders/vendor/items/${item.id}/start`
+          : `/api/orders/vendor/items/${item.id}/advance`
+        onUpdated(await api<OrderItem>(path, { method: "POST" }))
+      }
+      toast.success(`${item.design.title} moved to ${progress.next}`)
       return true
     } catch (error) {
       toast.error((error as Error).message)
@@ -271,7 +314,7 @@ export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdate
   }
 
   return (
-    <div className="order-item-detail">
+    <div className={`order-item-detail ${order.combined_order ? "is-combined" : ""}`}>
       <section className="order-detail-grid">
         <div className="order-detail-design">
           <div className="order-detail-image">{item.design.image_url ? <ApiImage alt={item.design.title} src={item.design.image_url} /> : <Shirt size={34} />}</div>
@@ -293,12 +336,14 @@ export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdate
         ))}
       </ol>}
 
+      {isVendor && !itemClosed && progressActions[item.work_status] && <section className="combined-item-progress-action"><div><Play size={18} /><span><strong>Update tailoring status</strong><small>Current: {workLabels[item.work_status]}. The customer will be notified about the next stage.</small></span></div><button className="button" disabled={Boolean(busy)} onClick={() => { const progress = progressActions[item.work_status]; if (progress) setConfirmation({ title: `${progress.label}?`, description: `This moves ${item.design.title} from ${workLabels[item.work_status].toLowerCase()} to ${progress.next} and notifies the customer.`, confirmLabel: progress.label, action: advanceWork }) }} type="button">{busy === "progress" ? <LoaderCircle className="spin" size={16} /> : <ChevronRight size={16} />} {progressActions[item.work_status]?.label}</button></section>}
+
       {!order.combined_order && <>{delivery && (
         <section className="order-delivery-summary">
           <Truck size={22} />
           <div>
-            <small>Platform-calculated delivery · {delivery.provider_name}</small>
-            <strong>{(delivery.distance_meters / 1000).toFixed(1)} km · ₹{delivery.delivery_cost.toLocaleString("en-IN")}</strong><MapAttribution provider={delivery.maps_provider} />
+            <small>{delivery.fulfilment_method.replaceAll("_", " ")} · {delivery.provider_name}</small>
+            <strong>{delivery.fulfilment_method === "platform_delivery" ? `${(delivery.distance_meters / 1000).toFixed(1)} km · ` : ""}₹{delivery.delivery_cost.toLocaleString("en-IN")}</strong>{delivery.maps_provider !== "not_required" && <MapAttribution provider={delivery.maps_provider} />}
             <p><MapPin size={14} /> {delivery.destination_address}</p>
           </div>
           <span className={`delivery-status status-${delivery.status}`}>{delivery.status.replaceAll("_", " ")}</span>
@@ -329,7 +374,6 @@ export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdate
               {invoice.status === "draft" && <button className="button" disabled={Boolean(busy)} onClick={async () => { if (await runAction("issue", `/api/orders/vendor/items/${item.id}/invoice/issue`)) toast.success("Invoice sent") }} type="button"><Send size={16} /> Send to customer</button>}
               {invoice.payment_status === "submitted" && <button className="button" disabled={Boolean(busy)} onClick={() => setConfirmation({ title: "Verify this cloth payment?", description: `Confirm that payment reference ${invoice.payment_reference || "provided by the customer"} has been received. This will unlock the tailoring job.`, confirmLabel: "Verify payment", action: async () => { const done = await runAction("verify", `/api/orders/vendor/items/${item.id}/invoice/verify-payment`); if (done) toast.success("Cloth payment verified"); return done } })} type="button"><CircleDollarSign size={16} /> Verify payment {invoice.payment_reference && `(${invoice.payment_reference})`}</button>}
               {invoice.status === "approved" && invoice.cloth_source === "customer_provided" && !invoice.cloth_received && <button className="button" disabled={Boolean(busy)} onClick={() => setConfirmation({ title: "Confirm cloth receipt?", description: "Confirm that you physically received the customer’s cloth and that it matches the stated requirement.", confirmLabel: "Cloth received", action: async () => { const done = await runAction("cloth", `/api/orders/vendor/items/${item.id}/cloth-received`); if (done) toast.success("Customer cloth marked received"); return done } })} type="button"><PackageCheck size={16} /> Confirm cloth received</button>}
-              {item.work_status === "ready_to_start" && <button className="button" disabled={Boolean(busy)} onClick={() => setConfirmation({ title: "Start this tailoring job?", description: "The order will move into fabric cutting and the customer will be notified that work has started.", confirmLabel: "Start tailoring", action: async () => { const done = await runAction("start", `/api/orders/vendor/items/${item.id}/start`); if (done) toast.success("Tailoring job started"); return done } })} type="button"><Play size={16} /> Start tailoring job</button>}
             </div>
           )}
 
@@ -338,7 +382,7 @@ export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdate
           )}
 
           {isCustomer && invoice.status === "approved" && invoice.payment_status === "pending" && invoice.cloth_bill_url && (
-            <div className="cloth-payment-form"><div><CircleDollarSign size={19} /><span><strong>Pay cloth cost: ₹{invoice.cloth_cost.toLocaleString("en-IN")}</strong><small>Use the vendor’s agreed offline payment method, then submit the transaction reference for verification.</small></span></div><div><input aria-label="Payment reference" onChange={(event) => setPaymentReference(event.target.value)} placeholder="UPI / bank transaction reference" value={paymentReference} /><button className="button" disabled={Boolean(busy) || paymentReference.trim().length < 3} onClick={() => setConfirmation({ title: "Submit this payment reference?", description: `Confirm that you paid ₹${invoice.cloth_cost.toLocaleString("en-IN")} for cloth using reference ${paymentReference.trim()}. The vendor will verify receipt.`, confirmLabel: "Submit reference", action: async () => { const done = await runAction("payment", `/api/orders/items/${item.id}/invoice/payment`, { payment_reference: paymentReference }); if (done) { setPaymentReference(""); toast.success("Payment reference sent for verification") } return done } })} type="button">Submit payment reference</button></div></div>
+            <div className="cloth-payment-form"><div><CircleDollarSign size={19} /><span><strong>Pay cloth cost securely: ₹{invoice.cloth_cost.toLocaleString("en-IN")}</strong><small>Razorpay verifies the payment automatically. The tailoring job unlocks only after server verification.</small></span></div><RazorpayCheckoutButton amount={invoice.cloth_cost} onVerified={async () => onOrderUpdated(await api<Order>(`/api/orders/${order.id}`))} resourceId={item.id} scope="order_item" /></div>
           )}
         </section>
       ))}

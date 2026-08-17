@@ -337,6 +337,7 @@ async def update_managed_user(
             .values(revoked_at=datetime.now(timezone.utc))
         )
         became_vendor = requested_role == UserRole.VENDOR.value
+        became_delivery_agent = requested_role == UserRole.DELIVERY_AGENT.value
         if became_vendor and not user.shop_name:
             user.shop_name = user.full_name
         db.add(Notification(
@@ -347,11 +348,18 @@ async def update_managed_user(
                 f"to {requested_role.replace('_', ' ')}."
                 + (
                     " Add your workshop pickup location in Profile before accepting delivery orders."
-                    if became_vendor else ""
+                    if became_vendor else (
+                        " Open Delivery workspace and update your current location before accepting assigned pickups."
+                        if became_delivery_agent else ""
+                    )
                 )
             ),
             notification_type="account_role_changed",
-            link="/profile?section=pickup" if became_vendor else "/profile?section=activity",
+            link=(
+                "/profile?section=pickup" if became_vendor
+                else "/delivery-agent" if became_delivery_agent
+                else "/profile?section=activity"
+            ),
         ))
     try:
         await db.commit()
