@@ -855,6 +855,14 @@ The presets follow Indian vocational tailoring material rather than one universa
   readiness regression coverage, Python compilation, Vite TypeScript production
   build, and `git diff --check`.
 
+## Vendor storefront availability messaging
+
+- Removed the customer-facing `Pickup setup pending` action from vendor directory
+  cards and vendor storefront headers. Pickup readiness remains an internal vendor/
+  administrator concern.
+- `Custom order` now appears only when that vendor is able to accept one. Empty
+  design messaging is neutral when custom ordering is unavailable.
+
 ## Recommended next milestone
 
 1. Replace startup compatibility statements with versioned Alembic migrations

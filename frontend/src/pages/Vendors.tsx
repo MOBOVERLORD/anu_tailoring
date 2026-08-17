@@ -87,7 +87,7 @@ const Vendors = () => {
                 <div className="vendor-directory-copy"><small>{vendor.full_name}</small><Link to={`/vendors/${vendor.id}`}><h2>{vendor.shop_name}</h2><p>{vendor.shop_description || "Custom tailoring and made-to-measure service."}</p>{vendor.location && <span><MapPin size={14} /> {vendor.location}</span>}</Link></div>
                 <div className="vendor-directory-actions">
                   {ownShop ? <span className="own-shop-label">Your shop</span> : (
-                    <><Link className="button button-secondary" to={`/vendors/${vendor.id}`}>View shop <ChevronRight size={16} /></Link><button className="button button-primary" disabled={busyId === vendor.id || !vendor.accepts_custom_orders} onClick={() => beginCustomOrder(vendor)} type="button">{busyId === vendor.id ? <LoaderCircle className="spin" size={17} /> : <MessageSquareText size={17} />} {vendor.accepts_custom_orders ? "Custom order" : "Pickup setup pending"}</button></>
+                    <><Link className="button button-secondary" to={`/vendors/${vendor.id}`}>View shop <ChevronRight size={16} /></Link>{vendor.accepts_custom_orders && <button className="button button-primary" disabled={busyId === vendor.id} onClick={() => beginCustomOrder(vendor)} type="button">{busyId === vendor.id ? <LoaderCircle className="spin" size={17} /> : <MessageSquareText size={17} />} Custom order</button>}</>
                   )}
                 </div>
               </article>

@@ -102,7 +102,7 @@ const VendorStorefront = () => {
         </div>
         <div className="vendor-storefront-actions">
           {!ownShop && <button aria-pressed={vendor.is_favorite} className={`button button-secondary ${vendor.is_favorite ? "design-favorite-active" : ""}`} onClick={toggleVendorFavorite} type="button"><Heart fill={vendor.is_favorite ? "currentColor" : "none"} size={17} /> {vendor.is_favorite ? "Saved vendor" : "Save vendor"}</button>}
-          {!ownShop && <button className="button button-primary" disabled={!vendor.accepts_custom_orders || requesting} onClick={beginCustomOrder} type="button">{requesting ? <LoaderCircle className="spin" size={17} /> : <MessageSquareText size={17} />} {vendor.accepts_custom_orders ? "Custom order" : "Pickup setup pending"}</button>}
+          {!ownShop && vendor.accepts_custom_orders && <button className="button button-primary" disabled={requesting} onClick={beginCustomOrder} type="button">{requesting ? <LoaderCircle className="spin" size={17} /> : <MessageSquareText size={17} />} Custom order</button>}
           {ownShop && <Link className="button button-primary" to="/profile?section=shop"><Store size={17} /> Manage your shop</Link>}
         </div>
       </section>
@@ -127,7 +127,7 @@ const VendorStorefront = () => {
               <button className="vendor-showcase-image" onClick={() => setSelectedDesign(design)} type="button">{design.image_url ? <ApiImage alt={design.title} src={design.image_url} /> : <Shirt size={44} />}<span>View design</span></button>
               <div className="vendor-showcase-copy"><div className="design-meta"><span>{design.category}</span><span>{design.garment_type}</span></div><h3>{design.title}</h3><p>{design.description}</p><div><strong>From {money(design.base_price)}</strong><button aria-label={`${liked ? "Remove" : "Add"} ${design.title} ${liked ? "from" : "to"} favorites`} className={`favorite-inline ${liked ? "active" : ""}`} onClick={() => toggleDesignFavorite(design)} type="button"><Heart fill={liked ? "currentColor" : "none"} size={17} /></button></div></div>
             </article>
-          })}</div> : <div className="vendor-showcase-empty"><Shirt size={32} /><div><strong>No published designs yet</strong><p>Use the request action above to discuss something custom with this vendor.</p></div></div>}
+          })}</div> : <div className="vendor-showcase-empty"><Shirt size={32} /><div><strong>No published designs yet</strong><p>{!ownShop && vendor.accepts_custom_orders ? "Use Custom order above to discuss something made for you." : "Published designs from this shop will appear here."}</p></div></div>}
         </section> : <section className="vendor-showcase-section" role="tabpanel">
           <div className="vendor-showcase-heading"><div><p className="section-kicker">Ready to buy</p><h2>Products from this shop</h2></div><span>{products.length} available</span></div>
           {products.length ? <div className="vendor-showcase-grid">{products.map((product) => <article className="vendor-showcase-card" key={product.id}>
