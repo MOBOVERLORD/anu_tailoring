@@ -682,6 +682,21 @@ The presets follow Indian vocational tailoring material rather than one universa
   the backend `VENDOR_CONTACT_EMAIL` setting through a narrowly allowlisted public
   config endpoint. Provider credentials and other environment values remain private.
 
+## Search discovery and public landing page
+
+- Added a public, responsive Vastrivo homepage at `/` for anonymous visitors and
+  search crawlers, with semantic headings and useful content covering custom
+  tailoring, made-to-measure designs, verified vendors, clothing, and order flow.
+  Signed-in users continue to see the existing Designs catalog at the same route.
+- Added a production `sitemap.xml` with the canonical `https://vastrivo.in/` URL and
+  a root-level `robots.txt` that references the sitemap while excluding authenticated,
+  account, order, cart, vendor-studio, administration, and API routes.
+- Added a self-referencing canonical URL, search description, robots metadata,
+  Open Graph fields, and `WebSite` JSON-LD. Route-aware metadata marks non-public
+  application screens `noindex, nofollow` in the client.
+- Verified the production bundle copies and serves both discovery files; XML parsing,
+  robots sitemap reference, TypeScript/Vite build, and frontend lint pass.
+
 ## Recommended next milestone
 
 1. Replace startup compatibility statements with versioned Alembic migrations

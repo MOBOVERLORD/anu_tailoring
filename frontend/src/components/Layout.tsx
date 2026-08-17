@@ -34,7 +34,7 @@ const Layout = () => {
 
   useEffect(() => {
     const titles: Record<string, string> = {
-      "/": "Designs",
+      "/": isAuthenticated ? "Designs" : "Custom Tailoring & Clothing Marketplace",
       "/login": "Sign in",
       "/register": "Create account",
       "/forgot-password": "Reset password",
@@ -49,8 +49,21 @@ const Layout = () => {
       "/vendor/sales-orders": "Vendor sales orders",
       "/admin": "Administration",
     }
-    document.title = `${titles[location.pathname] || "Vastrivo"} · Vastrivo`
-  }, [location.pathname])
+    document.title = location.pathname === "/" && !isAuthenticated
+      ? "Vastrivo | Custom Tailoring & Clothing Marketplace"
+      : `${titles[location.pathname] || "Vastrivo"} · Vastrivo`
+    const robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]')
+    const description = document.querySelector<HTMLMetaElement>('meta[name="description"]')
+    const canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')
+    const isPublicHome = location.pathname === "/" && !isAuthenticated
+    if (robots) robots.content = isPublicHome ? "index, follow" : "noindex, nofollow"
+    if (description) description.content = isPublicHome
+      ? "Discover custom tailoring, made-to-measure clothing, verified tailoring vendors, and ready-to-buy garments for women and men on Vastrivo."
+      : "Manage your Vastrivo tailoring, clothing, orders, measurements, and account."
+    if (canonical) canonical.href = isPublicHome
+      ? "https://vastrivo.in/"
+      : `${window.location.origin}${location.pathname}`
+  }, [isAuthenticated, location.pathname])
 
   useEffect(() => {
     if (!isAuthenticated) {

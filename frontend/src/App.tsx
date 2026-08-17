@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Navigate, BrowserRouter as Router, Route, Routes } from "react-router-dom"
 import Layout from "./components/Layout"
 import Home from "./pages/Home"
+import PublicHome from "./pages/PublicHome"
 import Login from "./pages/Login"
 import Profile from "./pages/Profile"
 import Register from "./pages/Register"
@@ -15,7 +16,7 @@ import VendorStorefront from "./pages/VendorStorefront"
 import Cart from "./pages/Cart"
 import ForgotPassword from "./pages/ForgotPassword"
 import ResetPassword from "./pages/ResetPassword"
-import { getAccessToken, getCurrentUser } from "./lib/api"
+import { getAccessToken, getCurrentUser, onAuthChange } from "./lib/api"
 import type { UserProfile } from "./types/api"
 import { CartProvider } from "./context/CartContext"
 
@@ -44,6 +45,12 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return getAccessToken() ? children : <Navigate replace to="/login" />
 }
 
+function HomeRoute() {
+  const [isAuthenticated, setIsAuthenticated] = useState(Boolean(getAccessToken()))
+  useEffect(() => onAuthChange(() => setIsAuthenticated(Boolean(getAccessToken()))), [])
+  return isAuthenticated ? <Home /> : <PublicHome />
+}
+
 function RequireRole({
   roles,
   children,
@@ -65,7 +72,7 @@ function App() {
     <Router>
       <CartProvider><Routes>
         <Route path="/" element={<Layout />}>
-          <Route index element={<RequireAuth><Home /></RequireAuth>} />
+          <Route index element={<HomeRoute />} />
           <Route path="login" element={<Login />} />
           <Route path="register" element={<Register />} />
           <Route path="forgot-password" element={<ForgotPassword />} />
