@@ -696,6 +696,10 @@ The presets follow Indian vocational tailoring material rather than one universa
   application screens `noindex, nofollow` in the client.
 - Verified the production bundle copies and serves both discovery files; XML parsing,
   robots sitemap reference, TypeScript/Vite build, and frontend lint pass.
+- Added explicit backend `/sitemap.xml` and `/robots.txt` responses ahead of the SPA
+  fallback. This prevents an incomplete/stale frontend bundle from serving the login
+  application for crawler files; both responses validate as HTTP 200 with the proper
+  XML/plain-text media types and use `PUBLIC_APP_URL` for production URLs.
 
 ## Recommended next milestone
 

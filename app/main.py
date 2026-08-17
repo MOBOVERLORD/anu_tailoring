@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTasks
 from sqlalchemy import delete, func, select
@@ -460,6 +460,55 @@ async def public_app_config():
     return {
         "vendor_contact_email": str(settings.VENDOR_CONTACT_EMAIL),
     }
+
+
+@app.get("/sitemap.xml", include_in_schema=False)
+async def sitemap_xml():
+    """Serve the sitemap before the SPA fallback can handle this path."""
+    canonical_root = settings.PUBLIC_APP_URL.rstrip("/")
+    content = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        "  <url>\n"
+        f"    <loc>{canonical_root}/</loc>\n"
+        "  </url>\n"
+        "</urlset>\n"
+    )
+    return Response(
+        content=content,
+        media_type="application/xml",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+@app.get("/robots.txt", include_in_schema=False)
+async def robots_txt():
+    """Advertise the sitemap while keeping private application paths unlisted."""
+    canonical_root = settings.PUBLIC_APP_URL.rstrip("/")
+    content = "\n".join([
+        "User-agent: *",
+        "Allow: /",
+        "Disallow: /api/",
+        "Disallow: /admin",
+        "Disallow: /cart",
+        "Disallow: /forgot-password",
+        "Disallow: /login",
+        "Disallow: /orders",
+        "Disallow: /profile",
+        "Disallow: /register",
+        "Disallow: /reset-password",
+        "Disallow: /shop",
+        "Disallow: /vendor",
+        "Disallow: /vendors",
+        "",
+        f"Sitemap: {canonical_root}/sitemap.xml",
+        "",
+    ])
+    return Response(
+        content=content,
+        media_type="text/plain",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @app.get("/health")
