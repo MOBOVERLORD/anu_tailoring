@@ -3371,12 +3371,92 @@ h3 {
 }
 
 .app-toast {
-  border: 1px solid var(--border) !important;
-  border-radius: 12px !important;
-  background: var(--surface-strong) !important;
-  box-shadow: var(--shadow-lg) !important;
-  color: var(--text) !important;
-  font-size: 12px !important;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: min(520px, calc(100vw - 32px));
+  min-height: 64px;
+  padding: 13px 13px 13px 16px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--brand);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface-strong) 96%, transparent);
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.45;
+  pointer-events: auto;
+  backdrop-filter: blur(18px);
+  transition: opacity .18s ease, transform .18s ease;
+}
+
+.app-toast.is-visible {
+  opacity: 1;
+  transform: translateY(-50%) scale(1);
+}
+
+.app-toast.is-hiding {
+  opacity: 0;
+  transform: translateY(calc(-50% - 8px)) scale(.98);
+}
+
+.app-toast-success {
+  border-left-color: var(--success);
+}
+
+.app-toast-success > svg:first-child {
+  color: var(--success);
+}
+
+.app-toast-error {
+  border-left-color: var(--danger);
+}
+
+.app-toast-error > svg:first-child {
+  color: var(--danger);
+}
+
+.app-toast-blank,
+.app-toast-custom {
+  border-left-color: var(--brand);
+}
+
+.app-toast-blank > svg:first-child,
+.app-toast-custom > svg:first-child {
+  color: var(--brand);
+}
+
+.app-toast-loading {
+  border-left-color: var(--warning);
+}
+
+.app-toast-loading > svg:first-child {
+  color: var(--warning);
+}
+
+.app-toast-message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.app-toast-close {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  color: var(--text-soft);
+}
+
+.app-toast-close:hover {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
 }
 
 @keyframes spin {

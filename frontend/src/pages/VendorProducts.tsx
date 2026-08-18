@@ -12,7 +12,7 @@ import type { DesignImage, DesignStatus, Product, ProductInput } from "@/types/a
 
 const emptyForm: ProductInput = { title: "", description: "", product_type: "ready_made", category: "women", garment_type: "", price: 0, unit: "piece", stock_quantity: 1, sizes: [], colors: [] }
 const labels: Record<DesignStatus, string> = { draft: "Draft", submitted: "Under review", approved: "Published", rejected: "Needs changes" }
-const MAX_BYTES = 2 * 1024 * 1024
+const MAX_BYTES = 5 * 1024 * 1024
 const COMMON_SIZES = ["XS", "S", "M", "L", "XL", "XXL"]
 const PRODUCT_TYPES = [{ value: "ready_made", label: "Ready-made clothing" }, { value: "fabric", label: "Fabric" }]
 const CUSTOMER_CATEGORIES = [{ value: "women", label: "Women" }, { value: "men", label: "Men" }, { value: "unisex", label: "Unisex" }, { value: "kids", label: "Kids" }]
@@ -75,7 +75,7 @@ const VendorProducts = () => {
     const chosen = Array.from(files)
     const existingCount = editing?.images.length || 0
     if (existingCount + formImages.length + chosen.length > 10) return toast.error("Each product can have up to 10 images")
-    if (chosen.some((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size <= 0 || file.size > MAX_BYTES)) return toast.error("Use JPEG, PNG, or WebP images up to 2 MB each")
+    if (chosen.some((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size <= 0 || file.size > MAX_BYTES)) return toast.error("Use JPEG, PNG, or WebP images up to 5 MB each")
     setFormImages((current) => [...current, ...chosen])
   }
 
@@ -116,7 +116,7 @@ const VendorProducts = () => {
     if (!files?.length) return
     const chosen = Array.from(files)
     if (product.images.length + chosen.length > 10) return toast.error("Each product can have up to 10 images")
-    if (chosen.some((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size <= 0 || file.size > MAX_BYTES)) return toast.error("Use JPEG, PNG, or WebP images up to 2 MB each")
+    if (chosen.some((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size <= 0 || file.size > MAX_BYTES)) return toast.error("Use JPEG, PNG, or WebP images up to 5 MB each")
     setBusyId(product.id)
     try {
       for (const [index, file] of chosen.entries()) {
@@ -193,7 +193,7 @@ const VendorProducts = () => {
                     </div>}
                     <label className="product-image-picker">
                       <input accept="image/jpeg,image/png,image/webp" hidden multiple onChange={(event) => { chooseFormImages(event.target.files); event.target.value = "" }} type="file" />
-                      <ImagePlus size={24} /><strong>{((editing?.images.length || 0) + formImages.length) > 0 ? "Add more images" : "Select product images"}</strong><small>{(editing?.images.length || 0) + formImages.length}/10 · JPEG, PNG or WebP · 2 MB max</small>
+                      <ImagePlus size={24} /><strong>{((editing?.images.length || 0) + formImages.length) > 0 ? "Add more images" : "Select product images"}</strong><small>{(editing?.images.length || 0) + formImages.length}/10 · JPEG, PNG or WebP · 5 MB max</small>
                     </label>
                   </div>
                 </section>

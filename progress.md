@@ -151,7 +151,7 @@ customer/vendor order-invoice workflow across React, FastAPI, and PostgreSQL.
   `rejected`.
 - Added a responsive Vendor Workspace:
   - Create and edit design details.
-  - Upload 1–10 JPEG, PNG, or WebP images, up to 2 MB each.
+  - Upload 1–10 JPEG, PNG, or WebP images, up to 5 MB each.
   - Search/filter the collection and preview images in a reusable full-screen
     zoom viewer with keyboard controls and focus containment.
   - Published designs can be revised; the first detail/image change safely moves
@@ -179,7 +179,7 @@ customer/vendor order-invoice workflow across React, FastAPI, and PostgreSQL.
   - The browser communicates only with FastAPI. The backend validates and
     uploads image bytes to GCS and proxies authorized image reads.
   - PostgreSQL stores bucket/object keys and upload metadata.
-  - Upload validation enforces MIME type, matching file signatures, a 2 MB size
+  - Upload validation enforces MIME type, matching file signatures, a 5 MB size
     limit, and at most 10 images per design before storage.
   - Deleting an image or design deletes its bucket objects first; missing
     objects are handled idempotently.
@@ -227,7 +227,7 @@ customer/vendor order-invoice workflow across React, FastAPI, and PostgreSQL.
 - Added a moderated vendor shop for physical clothing and fabric sales:
   - Vendors can create ready-made or fabric product drafts with category,
     garment/fabric style, price per piece/metre, available stock, optional
-    sizes and colours, and 1–10 private images up to 2 MB each.
+    sizes and colours, and 1–10 private images up to 5 MB each.
   - Product images use the same backend-only private GCS integration under
     `vendors/{vendor_id}/products/{product_id}/`; deleting an unreferenced
     product removes its bucket objects, while ordered products are retained.
@@ -318,7 +318,7 @@ customer/vendor order-invoice workflow across React, FastAPI, and PostgreSQL.
   option chips, responsive columns, and a sticky Cancel/Create action bar.
   - Vendors can now select and preview 1–10 product images directly while
     creating or editing a listing; files remain limited to JPEG/PNG/WebP and
-    2 MB each, and all uploads continue through the authenticated backend.
+    5 MB each, and all uploads continue through the authenticated backend.
   - The editor offers **Save draft** and **Save & submit**. Submission sends
     product details and images to the existing administrator approval queue;
     the product is not published until approved, and later image edits return
@@ -567,7 +567,7 @@ The presets follow Indian vocational tailoring material rather than one universa
   design card.
 - Saving now creates the private draft first and then uploads the selected images
   through the backend in order. The existing limit of 10 JPEG/PNG/WebP images at
-  2 MB each is enforced before upload.
+  5 MB each is enforced before upload.
 - Added partial-upload recovery: if the draft saves but an image fails, the dialog
   remains open on that same draft and retains only the images still needing a
   retry, avoiding duplicate drafts and duplicate uploads.
@@ -576,7 +576,7 @@ The presets follow Indian vocational tailoring material rather than one universa
 
 - Added authenticated profile-photo upload and replacement for every account,
   with the existing initials avatar retained as the fallback. Photos are limited
-  to validated JPEG/PNG/WebP files up to 2 MB, stored privately in GCS, served
+  to validated JPEG/PNG/WebP files up to 5 MB, stored privately in GCS, served
   only through backend media routes, and refreshed immediately across the header
   and profile UI.
 - Added vendor shop profiles with editable shop name, description, and logo.
@@ -863,7 +863,37 @@ The presets follow Indian vocational tailoring material rather than one universa
 - `Custom order` now appears only when that vendor is able to accept one. Empty
   design messaging is neutral when custom ordering is unavailable.
 
-## Android and iOS application roadmap (planned, not started)
+## Android and iOS application (foundation implemented; roadmap continues)
+
+### Implemented in the first native increment
+
+- Added an Expo/React Native/TypeScript application under `mobile/` with Expo
+  Router, EAS development/preview/production profiles, the Vastrivo light/dark
+  visual system, Android package and iOS bundle ID `in.vastrivo.app`, permission
+  descriptions, secure storage, and app/universal-link declarations.
+- Added dedicated FastAPI mobile login, rotating refresh, and logout endpoints.
+  Native refresh credentials are device-bound, stored hashed in PostgreSQL,
+  returned only to the native client, rotated on every use, and revoked on reuse
+  or logout. Browser cookie authentication continues unchanged.
+- Added session device metadata and last-use tracking to `auth_sessions`, startup
+  compatibility statements, and `scripts/verify_mobile_auth.py` coverage for
+  login, rotation, old-token rejection, device mismatch, logout, and web-session
+  regression.
+- Implemented customer auth/discovery/vendor/storefront/order/profile flows,
+  native Razorpay checkout backed by the existing server-side create/verify
+  endpoints, profile-photo upload, vendor applications, vendor design draft/edit,
+  1–10 backend-mediated 5 MB image uploads, review submission, and delivery-agent
+  assignment/location/status flows.
+- Pinned Expo SDK 54 with the legacy architecture intentionally enabled
+  (`newArchEnabled: false`) because Razorpay's current
+  React Native wrapper is not yet supported on the mandatory New Architecture in
+  Expo SDK 55+. Added `expo-dev-client`; generic Expo Go is not supported.
+- Added root mobile start/check/build commands and `mobile/README.md` with local
+  Android, macOS iOS, Windows EAS, production secret, signing, link-association,
+  and store-readiness instructions.
+- Verification passed: Python compilation, mobile auth integration/regression
+  scripts, strict mobile TypeScript/config validation, and all 18 Expo Doctor
+  dependency/configuration checks.
 
 ### Direction and scope
 
@@ -936,7 +966,7 @@ The presets follow Indian vocational tailoring material rather than one universa
 
 1. Vendor request/onboarding status, shop profile/logo, pickup map pin, availability, and
    internal setup guidance.
-2. Native camera/gallery selection, compression, 2 MB validation, background-safe upload
+2. Native camera/gallery selection, compression, 5 MB validation, background-safe upload
    queue, progress, retry, reordering, preview, and 1-10 image rules for designs/products.
 3. Draft/edit/submit/moderation feedback flows, design/product catalog, inventory, order
    expansion, chat, invoice creation, cloth requirements/cost, bill proof, rejection rules,
@@ -1006,6 +1036,28 @@ The presets follow Indian vocational tailoring material rather than one universa
   delivery agent -> hardening/store launch. Do not start UI screen duplication before the
   mobile authentication and versioned API contracts are settled.
 
+## Unified 5 MB image upload limit
+
+- Set the maximum image size to 5 MB for vendor design images,
+  product images, profile photos, and vendor shop logos.
+- Applied the same validation and user-facing guidance across FastAPI, the React
+  website, and the Expo Android/iOS client. JPEG, PNG, and WebP signature/type
+  validation and the 10-image listing limit remain unchanged.
+- Kept invoice cloth-bill images and PDFs at their existing 5 MB limit, so every
+  current image upload path now accepts files up to 5 MB.
+- Updated the default environment configuration and deployment documentation;
+  an explicitly configured production `MAX_DESIGN_IMAGE_MB` value must be `5`.
+
+## Centered user messages
+
+- Replaced the global top-right toast placement with a centered, responsive
+  message overlay so feedback remains visible on wide screens and mobile devices.
+- Success, error, loading, informational, and custom messages share the same
+  accessible presentation with type-specific colour/icon treatment.
+- Every message can be dismissed immediately with a labelled close button and
+  automatically closes after three seconds. Long backend error text wraps safely
+  inside the notification instead of overflowing the viewport.
+
 ## Recommended next milestone
 
 1. Replace startup compatibility statements with versioned Alembic migrations
@@ -1020,8 +1072,9 @@ The presets follow Indian vocational tailoring material rather than one universa
 6. Complete Razorpay KYC/live-mode activation, configure the production webhook
    secret in Secret Manager, and run a small live payment/refund smoke test before
    accepting customer payments broadly.
-7. Begin mobile Phase 0 by versioning the API, extracting shared contracts, and
-   designing encrypted device-bound refresh sessions before creating native screens.
+7. Continue mobile Phase 0 with versioned API contracts, push-device registration,
+   shared generated types, idempotent uploads, and the remaining customer/vendor
+   daily workflows before TestFlight and Play internal testing.
 
 ## Resume prompt
 

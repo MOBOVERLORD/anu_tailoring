@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
-import { Bell, CheckCheck, ChevronRight, ClipboardList, LayoutGrid, LogOut, PackageCheck, ShieldCheck, ShoppingBag, ShoppingCart, Store, Truck, UserRound, UsersRound } from "lucide-react"
+import { AlertCircle, Bell, CheckCheck, CheckCircle2, ChevronRight, ClipboardList, Info, LayoutGrid, LoaderCircle, LogOut, PackageCheck, ShieldCheck, ShoppingBag, ShoppingCart, Store, Truck, UserRound, UsersRound, X } from "lucide-react"
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom"
-import { Toaster, toast } from "react-hot-toast"
+import { Toaster, resolveValue, toast } from "react-hot-toast"
 import { api, closeSession, getAccessToken, getCurrentUser, onAuthChange } from "@/lib/api"
 import type { NotificationList, UserProfile } from "@/types/api"
 import { Brand } from "./Brand"
@@ -216,13 +216,42 @@ const Layout = () => {
     <div className={`app-shell ${isAuthenticated ? "has-mobile-nav" : ""}`}>
       <a className="skip-link" href="#main-content">Skip to main content</a>
       <Toaster
-        position="top-right"
+        containerStyle={{ bottom: "auto", top: "50%" }}
+        gutter={12}
+        position="top-center"
         toastOptions={{
           className: "app-toast",
-          duration: 4000,
-          error: { duration: 6000 },
+          duration: 3000,
         }}
-      />
+      >
+        {(currentToast) => {
+          const ToastIcon = currentToast.type === "success"
+            ? CheckCircle2
+            : currentToast.type === "error"
+              ? AlertCircle
+              : currentToast.type === "loading"
+                ? LoaderCircle
+                : Info
+
+          return (
+            <div
+              {...currentToast.ariaProps}
+              className={`app-toast app-toast-${currentToast.type} ${currentToast.visible ? "is-visible" : "is-hiding"}`}
+            >
+              <ToastIcon aria-hidden="true" className={currentToast.type === "loading" ? "spin" : ""} size={22} />
+              <div className="app-toast-message">{resolveValue(currentToast.message, currentToast)}</div>
+              <button
+                aria-label="Close message"
+                className="app-toast-close"
+                onClick={() => toast.dismiss(currentToast.id)}
+                type="button"
+              >
+                <X aria-hidden="true" size={18} />
+              </button>
+            </div>
+          )
+        }}
+      </Toaster>
       <header className="app-header">
         <div className="header-inner">
           <Brand />

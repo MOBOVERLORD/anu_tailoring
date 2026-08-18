@@ -1,0 +1,78 @@
+{
+  "expo": {
+    "name": "Vastrivo",
+    "slug": "vastrivo",
+    "version": "0.1.0",
+    "scheme": "vastrivo",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
+    "ios": {
+      "bundleIdentifier": "in.vastrivo.app",
+      "supportsTablet": true,
+      "associatedDomains": [
+        "applinks:vastrivo.in",
+        "applinks:www.vastrivo.in"
+      ],
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Vastrivo uses your location only when you choose to pin an address or share a delivery position.",
+        "NSCameraUsageDescription": "Vastrivo uses the camera when you choose to add a profile, design, product, or delivery proof photo.",
+        "NSPhotoLibraryUsageDescription": "Vastrivo accesses selected photos so you can upload profile, shop, design, and product images."
+      }
+    },
+    "android": {
+      "package": "in.vastrivo.app",
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "CAMERA"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "vastrivo.in",
+              "pathPrefix": "/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.vastrivo.in",
+              "pathPrefix": "/"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true,
+          "faceIDPermission": "Allow Vastrivo to unlock your saved session."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Choose photos for your Vastrivo profile, shop, designs, and products.",
+          "cameraPermission": "Take photos for your Vastrivo profile, shop, designs, and products.",
+          "microphonePermission": false
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

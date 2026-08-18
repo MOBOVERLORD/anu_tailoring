@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.auth import get_current_user, require_vendor
+from app.config import settings
 from app.database import get_db
 from app.models import (
     DesignImage,
@@ -32,7 +33,6 @@ from app.storage import (
 
 
 router = APIRouter(prefix="/api/media", tags=["media"])
-MAX_ACCOUNT_IMAGE_BYTES = 2 * 1024 * 1024
 ACCOUNT_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 
@@ -40,9 +40,13 @@ async def _validated_account_image(file: UploadFile) -> tuple[bytes, str, str]:
     content_type = (file.content_type or "").lower()
     if content_type not in ACCOUNT_IMAGE_TYPES:
         raise HTTPException(status_code=400, detail="Use a JPEG, PNG, or WebP image")
-    data = await file.read(MAX_ACCOUNT_IMAGE_BYTES + 1)
-    if not data or len(data) > MAX_ACCOUNT_IMAGE_BYTES:
-        raise HTTPException(status_code=400, detail="Image must be no larger than 2 MB")
+    max_bytes = settings.MAX_DESIGN_IMAGE_MB * 1024 * 1024
+    data = await file.read(max_bytes + 1)
+    if not data or len(data) > max_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Image must be no larger than {settings.MAX_DESIGN_IMAGE_MB} MB",
+        )
     validate_image_bytes(data, content_type)
     filename = PurePath(file.filename or "image").name[:255]
     return data, content_type, filename

@@ -579,8 +579,8 @@ const Profile = () => {
   const uploadAccountImage = async (kind: "profile" | "logo", files: FileList | null) => {
     const file = files?.[0]
     if (!file) return
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size <= 0 || file.size > 2 * 1024 * 1024) {
-      toast.error("Use a JPEG, PNG, or WebP image up to 2 MB")
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size <= 0 || file.size > 5 * 1024 * 1024) {
+      toast.error("Use a JPEG, PNG, or WebP image up to 5 MB")
       return
     }
     setUploadingImage(kind)
@@ -831,7 +831,7 @@ const Profile = () => {
               <form className="profile-form" onSubmit={saveProfile}>
                 <div className="profile-avatar-row">
                   <span className="avatar xxlarge">{profile.profile_image_url ? <ApiImage alt={profile.full_name} src={profile.profile_image_url} /> : initials}</span>
-                  <div><strong>{profile.full_name}</strong><p>{profile.role.replaceAll("_", " ")} account · joined {new Date(profile.created_at).toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</p><label className="button button-secondary profile-image-action"><Camera size={16} /> {uploadingImage === "profile" ? "Uploading…" : profile.profile_image_url ? "Change photo" : "Add profile photo"}<input accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingImage)} onChange={(event) => { void uploadAccountImage("profile", event.target.files); event.target.value = "" }} type="file" /></label><small>JPEG, PNG or WebP, up to 2 MB.</small></div>
+                  <div><strong>{profile.full_name}</strong><p>{profile.role.replaceAll("_", " ")} account · joined {new Date(profile.created_at).toLocaleDateString("en-IN", { month: "long", year: "numeric" })}</p><label className="button button-secondary profile-image-action"><Camera size={16} /> {uploadingImage === "profile" ? "Uploading…" : profile.profile_image_url ? "Change photo" : "Add profile photo"}<input accept="image/jpeg,image/png,image/webp" disabled={Boolean(uploadingImage)} onChange={(event) => { void uploadAccountImage("profile", event.target.files); event.target.value = "" }} type="file" /></label><small>JPEG, PNG or WebP, up to 5 MB.</small></div>
                 </div>
                 <div className="form-grid">
                   <div className="field">

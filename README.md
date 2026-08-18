@@ -28,6 +28,29 @@ Open:
 
 Press `Ctrl+C` once in the terminal to stop both services.
 
+## Android and iOS app
+
+The repository now includes a shared Expo/React Native client in `mobile/` for
+Android and iOS. It connects to the same FastAPI API and accounts as the website;
+its rotating refresh credential is device-bound and stored with the operating
+system's encrypted secure storage.
+
+Install and validate it from the project root:
+
+```powershell
+cd mobile
+npm.cmd install
+Copy-Item .env.example .env.local
+cd ..
+npm.cmd run mobile:check
+```
+
+Run the Android development build with `npm.cmd run mobile:android`. A native
+development build is required because Razorpay cannot run in generic Expo Go.
+Local iOS compilation requires macOS/Xcode; from Windows use EAS Build. See
+[`mobile/README.md`](mobile/README.md) for API URLs, Android/iOS commands, EAS
+profiles, store prerequisites, and current native feature coverage.
+
 ## Database and environment setup
 
 The existing `.env` is used automatically. For a new checkout:
@@ -327,7 +350,7 @@ history and cross-instance delivery do not depend on one container's memory.
 ## Design publishing workflow
 
 - Customers browse only approved designs and can save favorites.
-- Vendors create drafts, upload 1–10 JPEG/PNG/WebP images (up to 2 MB each),
+- Vendors create drafts, upload 1–10 JPEG/PNG/WebP images (up to 5 MB each),
   edit details, and submit for review.
 - Vendors can preview every design image in a keyboard-accessible zoom viewer.
   Editing an approved/published design or its images automatically moves it back
@@ -341,7 +364,7 @@ history and cross-instance delivery do not depend on one container's memory.
   referenced by an order is retained to preserve order history.
 
 The browser sends multipart image data only to FastAPI. FastAPI validates the
-type, file signature, 2 MB limit, and 10-image design limit before uploading to
+type, file signature, 5 MB limit, and 10-image design limit before uploading to
 Cloud Storage. Image downloads are also proxied through authenticated FastAPI
 media endpoints. PostgreSQL stores the durable bucket/object key, not a
 container filesystem path, so Cloud Run redeployments do not remove images.

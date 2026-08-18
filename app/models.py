@@ -174,6 +174,12 @@ class AuthSession(Base):
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     refresh_token_hash: Mapped[str] = mapped_column(String(64))
+    client_type: Mapped[str] = mapped_column(String(20), default="web")
+    device_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    device_platform: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    app_version: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    device_id_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True

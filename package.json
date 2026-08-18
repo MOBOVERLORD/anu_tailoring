@@ -8,6 +8,10 @@
     "setup": "node scripts/dev.mjs --setup-only",
     "deploy:gcp": "node scripts/deploy-gcp.mjs",
     "build": "npm --prefix frontend run build",
-    "lint": "npm --prefix frontend run lint"
+    "lint": "npm --prefix frontend run lint",
+    "mobile:start": "npm --prefix mobile run start",
+    "mobile:android": "npm --prefix mobile run android",
+    "mobile:ios": "npm --prefix mobile run ios",
+    "mobile:check": "npm --prefix mobile run check"
   }
 }

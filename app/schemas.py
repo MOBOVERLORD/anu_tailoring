@@ -101,6 +101,29 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class MobileLogin(UserLogin):
+    device_id: str = Field(min_length=16, max_length=128)
+    device_name: str = Field(min_length=1, max_length=100)
+    platform: Literal["android", "ios"]
+    app_version: str = Field(min_length=1, max_length=30)
+
+    @field_validator("device_id", "device_name", "app_version")
+    @classmethod
+    def normalize_mobile_metadata(cls, value: str) -> str:
+        return value.strip()
+
+
+class MobileRefreshRequest(BaseModel):
+    refresh_token: str = Field(min_length=20, max_length=1024)
+    device_id: str = Field(min_length=16, max_length=128)
+
+
+class MobileToken(Token):
+    refresh_token: str
+    access_expires_in: int
+    refresh_expires_in: int
+
+
 class PasswordResetRequest(BaseModel):
     email: EmailStr
 

@@ -30,7 +30,7 @@ const emptyForm: DesignInput = {
 }
 
 const MAX_IMAGES_PER_DESIGN = 10
-const MAX_IMAGE_BYTES = 2 * 1024 * 1024
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const statusLabels: Record<DesignStatus, string> = {
   draft: "Draft",
   submitted: "Under review",
@@ -143,7 +143,7 @@ const VendorWorkspace = () => {
         || file.size > MAX_IMAGE_BYTES,
     )
     if (invalid) {
-      toast.error("Use JPEG, PNG, or WebP files up to 2 MB each")
+      toast.error("Use JPEG, PNG, or WebP files up to 5 MB each")
       return
     }
     setFormImages((current) => [...current, ...selected])
@@ -209,7 +209,7 @@ const VendorWorkspace = () => {
         || file.size > MAX_IMAGE_BYTES,
     )
     if (invalid) {
-      toast.error("Use JPEG, PNG, or WebP files up to 2 MB each")
+      toast.error("Use JPEG, PNG, or WebP files up to 5 MB each")
       return
     }
 
@@ -527,7 +527,7 @@ const VendorWorkspace = () => {
                 <span className="design-form-image-picker-icon"><ImagePlus size={22} /></span>
                 <span>
                   <strong>{formImages.length ? "Add more photos" : "Choose design photos"}</strong>
-                  <small>JPEG, PNG or WebP · maximum 2 MB each</small>
+                  <small>JPEG, PNG or WebP · maximum 5 MB each</small>
                 </span>
                 <input
                   accept="image/jpeg,image/png,image/webp"

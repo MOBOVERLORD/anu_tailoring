@@ -124,6 +124,19 @@ async def init_db_and_seed_admin():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS delivery_agent_location_updated_at TIMESTAMPTZ",
         ):
             await conn.execute(text(statement))
+        for statement in (
+            "ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS client_type VARCHAR(20) NOT NULL DEFAULT 'web'",
+            "ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS device_name VARCHAR(100)",
+            "ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS device_platform VARCHAR(20)",
+            "ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS app_version VARCHAR(30)",
+            "ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS device_id_hash VARCHAR(64)",
+            "ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+        ):
+            await conn.execute(text(statement))
+        await conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS ix_auth_sessions_user_client_last_used "
+            "ON auth_sessions (user_id, client_type, last_used_at DESC)"
+        ))
         await conn.execute(text(
             "CREATE INDEX IF NOT EXISTS ix_users_shop_name ON users (shop_name)"
         ))

@@ -25,6 +25,9 @@ from app.schemas import (
     VendorApplicationResponse,
     UserUpdate,
     Token,
+    MobileLogin,
+    MobileRefreshRequest,
+    MobileToken,
 )
 from app.config import settings
 from app.email_service import (
@@ -178,6 +181,140 @@ def _clear_refresh_cookie(response: Response) -> None:
 def _require_ui_request(x_requested_with: str | None) -> None:
     if x_requested_with != UI_REQUEST_HEADER:
         raise HTTPException(status_code=403, detail="Invalid session request")
+
+
+async def _authenticate_login(form_data: UserLogin, db: AsyncSession) -> User:
+    result = await db.execute(
+        select(User).where(func.lower(User.email) == str(form_data.email).lower())
+    )
+    user = result.scalar_one_or_none()
+    password_matches = verify_password(
+        form_data.password,
+        user.hashed_password if user else DUMMY_PASSWORD_HASH,
+    )
+    if not user or not password_matches:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account is inactive. Contact an administrator.",
+        )
+    return user
+
+
+async def _start_auth_session(
+    user: User,
+    db: AsyncSession,
+    *,
+    client_type: str = "web",
+    device_id: str | None = None,
+    device_name: str | None = None,
+    device_platform: str | None = None,
+    app_version: str | None = None,
+) -> tuple[str, str]:
+    now = datetime.now(timezone.utc)
+    await db.execute(
+        delete(AuthSession).where(
+            AuthSession.user_id == user.id,
+            or_(
+                AuthSession.expires_at <= now,
+                AuthSession.revoked_at.is_not(None),
+            ),
+        )
+    )
+    sessions_to_remove = (
+        await db.execute(
+            select(AuthSession.id)
+            .where(
+                AuthSession.user_id == user.id,
+                AuthSession.revoked_at.is_(None),
+                AuthSession.expires_at > now,
+            )
+            .order_by(AuthSession.created_at.desc())
+            .offset(max(0, settings.MAX_ACTIVE_SESSIONS_PER_USER - 1))
+        )
+    ).scalars().all()
+    if sessions_to_remove:
+        await db.execute(delete(AuthSession).where(AuthSession.id.in_(sessions_to_remove)))
+
+    session_id = str(uuid4())
+    refresh_token = create_refresh_token(
+        data={"sub": str(user.id), "sid": session_id, "jti": str(uuid4())}
+    )
+    db.add(
+        AuthSession(
+            id=session_id,
+            user_id=user.id,
+            refresh_token_hash=_token_hash(refresh_token),
+            client_type=client_type,
+            device_name=device_name,
+            device_platform=device_platform,
+            app_version=app_version,
+            device_id_hash=_token_hash(device_id) if device_id else None,
+            last_used_at=now,
+            expires_at=now + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES),
+        )
+    )
+    await db.commit()
+    access_token = create_access_token(data={"sub": str(user.id), "sid": session_id})
+    return access_token, refresh_token
+
+
+async def _rotate_refresh_session(
+    refresh_token: str,
+    db: AsyncSession,
+    *,
+    expected_client_type: str,
+    device_id: str | None = None,
+) -> tuple[str, str]:
+    payload = _decode_token(refresh_token, "refresh")
+    try:
+        user_id = int(payload["sub"])
+        session_id = str(payload["sid"])
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="Invalid refresh session")
+
+    session = await db.scalar(
+        select(AuthSession)
+        .where(AuthSession.id == session_id, AuthSession.user_id == user_id)
+        .with_for_update()
+    )
+    now = datetime.now(timezone.utc)
+    if not session or session.revoked_at is not None or session.expires_at <= now:
+        raise HTTPException(status_code=401, detail="Refresh session is expired or closed")
+    if session.client_type != expected_client_type:
+        raise HTTPException(status_code=401, detail="Refresh session client is invalid")
+    if expected_client_type == "mobile":
+        if not device_id or not session.device_id_hash or not hmac.compare_digest(
+            session.device_id_hash, _token_hash(device_id)
+        ):
+            session.revoked_at = now
+            await db.commit()
+            raise HTTPException(status_code=401, detail="Mobile device session is invalid")
+    if not hmac.compare_digest(session.refresh_token_hash, _token_hash(refresh_token)):
+        session.revoked_at = now
+        await db.commit()
+        raise HTTPException(status_code=401, detail="Refresh token reuse detected; session closed")
+
+    user = await db.get(User, user_id)
+    if not user or not user.is_active:
+        session.revoked_at = now
+        await db.commit()
+        raise HTTPException(status_code=401, detail="Invalid refresh token or inactive account")
+
+    new_refresh_token = create_refresh_token(
+        data={"sub": str(user.id), "sid": session_id, "jti": str(uuid4())}
+    )
+    session.refresh_token_hash = _token_hash(new_refresh_token)
+    session.last_used_at = now
+    session.expires_at = now + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES)
+    await db.commit()
+    access_token = create_access_token(data={"sub": str(user.id), "sid": session_id})
+    return access_token, new_refresh_token
 
 
 async def get_current_user(
@@ -401,72 +538,8 @@ async def login_for_access_token(
     db: AsyncSession = Depends(get_db),
 ):
     _require_ui_request(x_requested_with)
-    result = await db.execute(
-        select(User).where(func.lower(User.email) == str(form_data.email).lower())
-    )
-    user = result.scalar_one_or_none()
-
-    password_matches = verify_password(
-        form_data.password,
-        user.hashed_password if user else DUMMY_PASSWORD_HASH,
-    )
-    if not user or not password_matches:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your account is inactive. Contact an administrator.",
-        )
-    now = datetime.now(timezone.utc)
-    await db.execute(
-        delete(AuthSession).where(
-            AuthSession.user_id == user.id,
-            or_(
-                AuthSession.expires_at <= now,
-                AuthSession.revoked_at.is_not(None),
-            ),
-        )
-    )
-    # Keep a bounded number of device sessions. The oldest session is removed
-    # before inserting this login, immediately invalidating its access token.
-    sessions_to_remove = (
-        await db.execute(
-            select(AuthSession.id)
-            .where(
-                AuthSession.user_id == user.id,
-                AuthSession.revoked_at.is_(None),
-                AuthSession.expires_at > now,
-            )
-            .order_by(AuthSession.created_at.desc())
-            .offset(max(0, settings.MAX_ACTIVE_SESSIONS_PER_USER - 1))
-        )
-    ).scalars().all()
-    if sessions_to_remove:
-        await db.execute(
-            delete(AuthSession).where(AuthSession.id.in_(sessions_to_remove))
-        )
-    session_id = str(uuid4())
-    refresh_jti = str(uuid4())
-    refresh_token = create_refresh_token(
-        data={"sub": str(user.id), "sid": session_id, "jti": refresh_jti}
-    )
-    db.add(
-        AuthSession(
-            id=session_id,
-            user_id=user.id,
-            refresh_token_hash=_token_hash(refresh_token),
-            expires_at=now
-            + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES),
-        )
-    )
-    await db.commit()
-    access_token = create_access_token(
-        data={"sub": str(user.id), "sid": session_id}
-    )
+    user = await _authenticate_login(form_data, db)
+    access_token, refresh_token = await _start_auth_session(user, db)
     _set_refresh_cookie(response, refresh_token)
     return {"access_token": access_token}
 
@@ -486,52 +559,83 @@ async def refresh_access_token(
             detail="Refresh session is missing or expired",
         )
 
-    payload = _decode_token(refresh_token, "refresh")
     try:
-        user_id = int(payload["sub"])
-        session_id = str(payload["sid"])
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=401, detail="Invalid refresh session")
-
-    session = await db.scalar(
-        select(AuthSession)
-        .where(AuthSession.id == session_id, AuthSession.user_id == user_id)
-        .with_for_update()
-    )
-    now = datetime.now(timezone.utc)
-    if (
-        not session
-        or session.revoked_at is not None
-        or session.expires_at <= now
-    ):
+        access_token, new_refresh_token = await _rotate_refresh_session(
+            refresh_token,
+            db,
+            expected_client_type="web",
+        )
+    except HTTPException:
         _clear_refresh_cookie(response)
-        raise HTTPException(status_code=401, detail="Refresh session is expired or closed")
-    if not hmac.compare_digest(session.refresh_token_hash, _token_hash(refresh_token)):
-        session.revoked_at = now
-        await db.commit()
-        _clear_refresh_cookie(response)
-        raise HTTPException(status_code=401, detail="Refresh token reuse detected; session closed")
-
-    user = await db.get(User, user_id)
-    if not user or not user.is_active:
-        session.revoked_at = now
-        await db.commit()
-        _clear_refresh_cookie(response)
-        raise HTTPException(status_code=401, detail="Invalid refresh token or inactive account")
-
-    new_refresh_token = create_refresh_token(
-        data={"sub": str(user.id), "sid": session_id, "jti": str(uuid4())}
-    )
-    session.refresh_token_hash = _token_hash(new_refresh_token)
-    session.expires_at = now + timedelta(
-        minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES
-    )
-    await db.commit()
-    access_token = create_access_token(
-        data={"sub": str(user.id), "sid": session_id}
-    )
+        raise
     _set_refresh_cookie(response, new_refresh_token)
     return {"access_token": access_token}
+
+
+@router.post("/mobile/login", response_model=MobileToken)
+async def mobile_login(
+    form_data: MobileLogin,
+    response: Response,
+    x_requested_with: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_ui_request(x_requested_with)
+    user = await _authenticate_login(form_data, db)
+    access_token, refresh_token = await _start_auth_session(
+        user,
+        db,
+        client_type="mobile",
+        device_id=form_data.device_id,
+        device_name=form_data.device_name,
+        device_platform=form_data.platform,
+        app_version=form_data.app_version,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "access_expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        "refresh_expires_in": settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
+    }
+
+
+@router.post("/mobile/refresh", response_model=MobileToken)
+async def mobile_refresh(
+    payload: MobileRefreshRequest,
+    response: Response,
+    x_requested_with: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_ui_request(x_requested_with)
+    access_token, refresh_token = await _rotate_refresh_session(
+        payload.refresh_token,
+        db,
+        expected_client_type="mobile",
+        device_id=payload.device_id,
+    )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "access_expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        "refresh_expires_in": settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
+    }
+
+
+@router.post("/mobile/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def mobile_logout(
+    token: str = Depends(oauth2_scheme),
+    x_requested_with: str | None = Header(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    _require_ui_request(x_requested_with)
+    payload = _decode_token(token, "access")
+    session = await db.get(AuthSession, str(payload["sid"]))
+    if session and session.revoked_at is None:
+        session.revoked_at = datetime.now(timezone.utc)
+        await db.commit()
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

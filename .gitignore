@@ -209,6 +209,20 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# Expo / React Native local state and native build outputs
+node_modules/
+mobile/.expo/
+mobile/android/
+mobile/ios/
+mobile/dist/
+mobile/dist-verify/
+mobile/.env.local
+mobile/*.jks
+mobile/*.keystore
+mobile/*.mobileprovision
+mobile/*.p8
+mobile/*.p12
+
 # Ruff stuff:
 .ruff_cache/
 

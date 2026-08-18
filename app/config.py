@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     # Optional locally: ADC impersonates this service account for GCS operations.
     # Cloud Run derives its attached identity.
     GCS_SIGNING_SERVICE_ACCOUNT: Optional[EmailStr] = None
-    MAX_DESIGN_IMAGE_MB: int = 2
+    MAX_DESIGN_IMAGE_MB: int = 5
     MAX_INVOICE_ATTACHMENT_MB: int = 5
     # Safe to expose through the public UI config endpoint. This is the support
     # contact shown to prospective vendors, not a provider credential.
