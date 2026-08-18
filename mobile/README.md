@@ -26,7 +26,10 @@ push registration, and offline upload recovery are still on the mobile roadmap.
 ## Local prerequisites
 
 - Node.js 20.19.4 or newer.
-- Android Studio plus an emulator for local Android builds.
+- Android Studio with Android 16/API 36, Android SDK Build-Tools,
+  Platform-Tools/ADB, Command-line Tools, and an emulator for local Android
+  builds. Set `ANDROID_HOME` to the SDK directory and add
+  `%ANDROID_HOME%\platform-tools` to the Windows user `Path`.
 - macOS with Xcode for local iOS builds, or an Expo account for EAS cloud builds
   from Windows.
 - The repository backend running locally or the deployed `https://vastrivo.in`
@@ -39,12 +42,16 @@ It will not run correctly inside the generic Expo Go application.
 
 From the repository root:
 
-```powershell
+In Windows Command Prompt:
+
+```cmd
 cd mobile
 npm.cmd install
-Copy-Item .env.example .env.local
+copy .env.example .env.local
 npm.cmd run check
 ```
+
+In PowerShell, use `Copy-Item .env.example .env.local` instead of `copy`.
 
 Set `EXPO_PUBLIC_API_URL` in the ignored `.env.local`:
 

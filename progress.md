@@ -891,6 +891,10 @@ The presets follow Indian vocational tailoring material rather than one universa
 - Added root mobile start/check/build commands and `mobile/README.md` with local
   Android, macOS iOS, Windows EAS, production secret, signing, link-association,
   and store-readiness instructions.
+- Added the Expo SDK 54-compatible `expo-system-ui` dependency so automatic
+  light/dark system appearance is included when native Android/iOS projects are
+  generated. Local Android builds still require Android Studio, API 36,
+  Platform-Tools/ADB, `ANDROID_HOME`, and an emulator or connected device.
 - Verification passed: Python compilation, mobile auth integration/regression
   scripts, strict mobile TypeScript/config validation, and all 18 Expo Doctor
   dependency/configuration checks.
