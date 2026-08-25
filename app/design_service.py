@@ -16,10 +16,15 @@ def serialize_design(design: Design) -> dict:
                 "sort_order": image.sort_order,
                 "upload_status": image.upload_status,
                 "url": url,
+                "thumbnail_url": f"{url}?thumbnail=true" if url else None,
             }
         )
 
     cover = next((image["url"] for image in images if image["url"]), None)
+    thumbnail = next(
+        (image["thumbnail_url"] for image in images if image["thumbnail_url"]),
+        None,
+    )
     return {
         "id": design.id,
         "title": design.title,
@@ -29,6 +34,7 @@ def serialize_design(design: Design) -> dict:
         "base_price": design.base_price,
         "is_custom_request_template": design.is_custom_request_template,
         "image_url": cover,
+        "thumbnail_url": thumbnail,
         "vendor_id": design.vendor_id,
         "vendor_name": design.vendor.full_name if design.vendor else None,
         "status": design.status,

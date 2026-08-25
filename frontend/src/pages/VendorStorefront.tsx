@@ -48,7 +48,6 @@ const VendorStorefront = () => {
   }, [id])
 
   const ownShop = vendor?.id === profile?.id
-  const availableCount = designs.length + products.length
   const specialties = useMemo(() => Array.from(new Set([
     ...designs.map((design) => design.garment_type),
     ...products.map((product) => product.garment_type).filter(Boolean) as string[],
@@ -109,29 +108,28 @@ const VendorStorefront = () => {
 
       <section className="vendor-storefront-about">
         <div><p className="section-kicker">About the shop</p><h2>Made around your needs</h2><p>{vendor.shop_description || "Custom tailoring, alterations, and made-to-measure garments from this verified Vastrivo vendor."}</p></div>
-        <dl><div><dt>Published listings</dt><dd>{availableCount}</dd></div><div><dt>Designs</dt><dd>{designs.length}</dd></div><div><dt>Products</dt><dd>{products.length}</dd></div></dl>
         {specialties.length > 0 && <div className="vendor-specialties">{specialties.map((item) => <span key={item}>{item.replaceAll("_", " ")}</span>)}</div>}
       </section>
 
       <section className="vendor-catalog-panel">
         <div aria-label="Shop catalog" className="vendor-catalog-tabs" role="tablist">
-          <button aria-selected={catalogView === "designs"} className={catalogView === "designs" ? "active" : ""} onClick={() => setCatalogView("designs")} role="tab" type="button"><Shirt size={17} /><span><strong>Designs</strong><small>{designs.length} published</small></span></button>
-          <button aria-selected={catalogView === "products"} className={catalogView === "products" ? "active" : ""} onClick={() => setCatalogView("products")} role="tab" type="button"><ShoppingBag size={17} /><span><strong>Products</strong><small>{products.length} available</small></span></button>
+          <button aria-selected={catalogView === "designs"} className={catalogView === "designs" ? "active" : ""} onClick={() => setCatalogView("designs")} role="tab" type="button"><Shirt size={17} /><span><strong>Designs</strong></span></button>
+          <button aria-selected={catalogView === "products"} className={catalogView === "products" ? "active" : ""} onClick={() => setCatalogView("products")} role="tab" type="button"><ShoppingBag size={17} /><span><strong>Products</strong></span></button>
         </div>
 
         {catalogView === "designs" ? <section className="vendor-showcase-section" role="tabpanel">
-          <div className="vendor-showcase-heading"><div><p className="section-kicker">Made-to-measure</p><h2>Designs from {vendor.shop_name}</h2></div><span>{designs.length} published</span></div>
+          <div className="vendor-showcase-heading"><div><p className="section-kicker">Made-to-measure</p><h2>Designs from {vendor.shop_name}</h2></div></div>
           {designs.length ? <div className="vendor-showcase-grid">{designs.map((design) => {
             const liked = favorites.some((item) => item.id === design.id)
             return <article className="vendor-showcase-card" key={design.id}>
-              <button className="vendor-showcase-image" onClick={() => setSelectedDesign(design)} type="button">{design.image_url ? <ApiImage alt={design.title} src={design.image_url} /> : <Shirt size={44} />}<span>View design</span></button>
+              <button className="vendor-showcase-image" onClick={() => setSelectedDesign(design)} type="button">{design.thumbnail_url || design.image_url ? <ApiImage alt={design.title} src={design.thumbnail_url || design.image_url!} /> : <Shirt size={44} />}<span>View design</span></button>
               <div className="vendor-showcase-copy"><div className="design-meta"><span>{design.category}</span><span>{design.garment_type}</span></div><h3>{design.title}</h3><p>{design.description}</p><div><strong>From {money(design.base_price)}</strong><button aria-label={`${liked ? "Remove" : "Add"} ${design.title} ${liked ? "from" : "to"} favorites`} className={`favorite-inline ${liked ? "active" : ""}`} onClick={() => toggleDesignFavorite(design)} type="button"><Heart fill={liked ? "currentColor" : "none"} size={17} /></button></div></div>
             </article>
           })}</div> : <div className="vendor-showcase-empty"><Shirt size={32} /><div><strong>No published designs yet</strong><p>{!ownShop && vendor.accepts_custom_orders ? "Use Custom order above to discuss something made for you." : "Published designs from this shop will appear here."}</p></div></div>}
         </section> : <section className="vendor-showcase-section" role="tabpanel">
-          <div className="vendor-showcase-heading"><div><p className="section-kicker">Ready to buy</p><h2>Products from this shop</h2></div><span>{products.length} available</span></div>
+          <div className="vendor-showcase-heading"><div><p className="section-kicker">Ready to buy</p><h2>Products from this shop</h2></div></div>
           {products.length ? <div className="vendor-showcase-grid">{products.map((product) => <article className="vendor-showcase-card" key={product.id}>
-            <Link className="vendor-showcase-image" to={`/shop?product=${product.id}`}>{product.image_url ? <ApiImage alt={product.title} src={product.image_url} /> : <ImageIcon size={44} />}<span>View product</span></Link>
+            <Link className="vendor-showcase-image" to={`/shop?product=${product.id}`}>{product.thumbnail_url || product.image_url ? <ApiImage alt={product.title} src={product.thumbnail_url || product.image_url!} /> : <ImageIcon size={44} />}<span>View product</span></Link>
             <div className="vendor-showcase-copy"><div className="design-meta"><span>{product.product_type === "fabric" ? "fabric" : "ready-made"}</span><span>{product.category}</span></div><h3>{product.title}</h3><p>{product.description}</p><div><strong>{money(product.price)} / {product.unit}</strong><Link className="vendor-product-link" to={`/shop?product=${product.id}`}>Buy <ChevronRight size={15} /></Link></div></div>
           </article>)}</div> : <div className="vendor-showcase-empty"><PackageOpen size={32} /><div><strong>No products for sale yet</strong><p>Published clothes and fabrics will appear here.</p></div></div>}
         </section>}

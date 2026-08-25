@@ -188,7 +188,7 @@ const VendorProducts = () => {
                   <header><span><ImagePlus size={18} /></span><div><h3>Product photos <b>*</b></h3><p>The first image becomes the shop cover.</p></div></header>
                   <div className={`product-media-grid ${((editing?.images.length || 0) > 0 || formImagePreviews.length > 0) ? "has-images" : "is-empty"}`}>
                     {((editing?.images.length || 0) > 0 || formImagePreviews.length > 0) && <div className="product-form-previews">
-                      {editing?.images.map((image, index) => image.url && <div className="product-form-preview" key={`existing-${image.id}`}><ApiImage alt={`${editing.title} image ${index + 1}`} src={image.url} /><span>{index === 0 ? "Cover" : "Uploaded"}</span></div>)}
+                      {editing?.images.map((image, index) => image.url && <div className="product-form-preview" key={`existing-${image.id}`}><ApiImage alt={`${editing.title} image ${index + 1}`} src={image.thumbnail_url || image.url} /><span>{index === 0 ? "Cover" : "Uploaded"}</span></div>)}
                       {formImagePreviews.map(({ file, url }, index) => <div className="product-form-preview is-new" key={`${file.name}-${file.lastModified}-${index}`}><img alt={`New product preview ${index + 1}`} src={url} /><button aria-label={`Remove ${file.name}`} onClick={() => setFormImages((current) => current.filter((_, itemIndex) => itemIndex !== index))} type="button"><X size={14} /></button><span>{(editing?.images.length || 0) === 0 && index === 0 ? "Cover" : "New"}</span></div>)}
                     </div>}
                     <label className="product-image-picker">

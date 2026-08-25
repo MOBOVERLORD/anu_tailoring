@@ -2134,13 +2134,34 @@ async def get_order_comments(
 @router.get("/{order_id}", response_model=OrderResponse)
 async def get_order(
     order_id: int,
-    current_user: User = Depends(require_buyer),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     order = await _loaded_order(order_id, db)
-    if not order or order.user_id != current_user.id:
+    if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    return serialize_order(order)
+    if order.user_id == current_user.id:
+        return serialize_order(order)
+    if current_user.role == UserRole.VENDOR.value:
+        vendor_items = [
+            item for item in order.order_items
+            if item.design.vendor_id == current_user.id
+        ]
+        is_combined_vendor = order.vendor_id == current_user.id
+        has_vendor_products = any(
+            item.product.vendor_id == current_user.id
+            for item in order.product_items
+        )
+        if not vendor_items and not is_combined_vendor and not has_vendor_products:
+            raise HTTPException(status_code=404, detail="Order not found")
+        return serialize_order(
+            order,
+            vendor_items,
+            include_draft_invoices=True,
+        )
+    if current_user.role in {UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value}:
+        return serialize_order(order, include_draft_invoices=True)
+    raise HTTPException(status_code=404, detail="Order not found")
 
 
 @admin_router.get("", response_model=OrderListResponse)

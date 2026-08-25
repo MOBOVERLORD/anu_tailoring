@@ -20,7 +20,7 @@ export const Field = (props: TextInputProps & { label: string }) => {
   return <View style={{ marginBottom: 16 }}><Label>{props.label}</Label><TextInput
     {...props}
     placeholderTextColor={colors.muted}
-    style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.text }, props.style]}
+    style={[styles.input, { backgroundColor: props.editable === false ? colors.surfaceMuted : colors.surface, borderColor: colors.border, color: colors.text, opacity: props.editable === false ? 0.72 : 1 }, props.style]}
   /></View>
 }
 

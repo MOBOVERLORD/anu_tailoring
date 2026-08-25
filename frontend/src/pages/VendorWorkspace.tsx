@@ -389,7 +389,7 @@ const VendorWorkspace = () => {
                       {image.url
                         ? (
                           <button className="thumbnail-preview" aria-label={`Preview ${image.original_filename}`} onClick={() => openLightbox(design, image.id)} type="button">
-                            <ApiImage alt={image.original_filename} src={image.url} />
+                            <ApiImage alt={image.original_filename} src={image.thumbnail_url || image.url} />
                             <span><Eye size={15} /> Preview</span>
                           </button>
                         )

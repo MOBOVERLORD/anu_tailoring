@@ -17,8 +17,13 @@ def serialize_product(product: Product) -> dict:
             "sort_order": image.sort_order,
             "upload_status": image.upload_status,
             "url": url,
+            "thumbnail_url": f"{url}?thumbnail=true" if url else None,
         })
     cover = next((image["url"] for image in images if image["url"]), None)
+    thumbnail = next(
+        (image["thumbnail_url"] for image in images if image["thumbnail_url"]),
+        None,
+    )
     return {
         "id": product.id,
         "vendor_id": product.vendor_id,
@@ -36,6 +41,7 @@ def serialize_product(product: Product) -> dict:
         "status": product.status,
         "rejection_comment": product.rejection_comment,
         "image_url": cover,
+        "thumbnail_url": thumbnail,
         "images": images,
         "created_at": product.created_at,
         "updated_at": product.updated_at,

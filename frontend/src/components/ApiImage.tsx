@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { ImgHTMLAttributes } from "react"
 import { apiBlob } from "@/lib/api"
 
@@ -10,10 +10,30 @@ type ApiImageProps = Omit<ImgHTMLAttributes<HTMLImageElement>, "src"> & {
 
 export const ApiImage = ({ src, alt, ...props }: ApiImageProps) => {
   const [objectUrl, setObjectUrl] = useState<string | null>(null)
+  const [shouldLoad, setShouldLoad] = useState(false)
+  const imageRef = useRef<HTMLImageElement | null>(null)
 
   useEffect(() => {
+    const element = imageRef.current
+    if (!element || typeof IntersectionObserver === "undefined") {
+      setShouldLoad(true)
+      return
+    }
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setShouldLoad(true)
+        observer.disconnect()
+      }
+    }, { rootMargin: "320px" })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [src])
+
+  useEffect(() => {
+    if (!shouldLoad) return
     const controller = new AbortController()
     let currentUrl: string | null = null
+    setObjectUrl(null)
 
     apiBlob(src, { signal: controller.signal })
       .then((blob) => {
@@ -28,7 +48,15 @@ export const ApiImage = ({ src, alt, ...props }: ApiImageProps) => {
       controller.abort()
       if (currentUrl) URL.revokeObjectURL(currentUrl)
     }
-  }, [src])
+  }, [shouldLoad, src])
 
-  return objectUrl ? <img {...props} alt={alt} src={objectUrl} /> : null
+  return <img
+    {...props}
+    alt={alt}
+    className={`${props.className || ""} ${objectUrl ? "api-image-ready" : "api-image-loading"}`.trim()}
+    decoding={props.decoding || "async"}
+    loading={props.loading || "lazy"}
+    ref={imageRef}
+    src={objectUrl || "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="}
+  />
 }

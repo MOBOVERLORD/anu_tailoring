@@ -43,6 +43,8 @@ Usage:
 
 Required environment variables:
   GCP_DESIGN_BUCKET      Private design-image bucket name
+  GCP_DATABASE_SECRET    Secret Manager name containing DATABASE_URL
+  GCP_JWT_SECRET         Secret Manager name containing SECRET_KEY
 
 Optional environment variables:
   GCP_PROJECT            Google Cloud project ID; defaults to gcloud config
@@ -63,6 +65,8 @@ Examples:
   set GCP_PROJECT=my-project
   set GCP_REGION=asia-south1
   set GCP_CLOUD_SQL_INSTANCE=my-project:asia-south1:tailoring-db
+  set GCP_DATABASE_SECRET=vastrivo-database-url
+  set GCP_JWT_SECRET=vastrivo-jwt-secret
   deploy-gcp.cmd
 
 The Cloud Run service must have DATABASE_URL and SECRET_KEY configured from
@@ -85,6 +89,78 @@ if (!project || project === "(unset)") {
 const designBucket = process.env.GCP_DESIGN_BUCKET
 if (!designBucket) {
   fail("GCP_DESIGN_BUCKET is required. Set it to the private design-image bucket name before deploying.")
+}
+
+const databaseSecret = process.env.GCP_DATABASE_SECRET
+const jwtSecret = process.env.GCP_JWT_SECRET
+if (!databaseSecret || !jwtSecret) {
+  fail(
+    "GCP_DATABASE_SECRET and GCP_JWT_SECRET are required so the migration job can safely update Cloud SQL before traffic moves.",
+  )
+}
+
+const migrationJob = `${service}-migrate`
+const migrationArguments = [
+  "run",
+  "jobs",
+  "deploy",
+  migrationJob,
+  "--source",
+  ".",
+  "--project",
+  project,
+  "--region",
+  region,
+  "--tasks",
+  "1",
+  "--max-retries",
+  "0",
+  "--task-timeout",
+  "900",
+  "--command",
+  "python",
+  "--args=-m,alembic,upgrade,head",
+  "--set-env-vars",
+  "ENVIRONMENT=production,SERVE_FRONTEND=false",
+  "--set-secrets",
+  `DATABASE_URL=${databaseSecret}:latest,SECRET_KEY=${jwtSecret}:latest`,
+  "--execute-now",
+  "--wait",
+]
+
+if (process.env.GCP_CLOUD_SQL_INSTANCE) {
+  migrationArguments.push(
+    "--set-cloudsql-instances",
+    process.env.GCP_CLOUD_SQL_INSTANCE,
+  )
+}
+
+if (process.env.GCP_SERVICE_ACCOUNT) {
+  migrationArguments.push("--service-account", process.env.GCP_SERVICE_ACCOUNT)
+}
+
+console.log(`
+[Vastrivo] Applying database migrations with Cloud Run Job
+  Job:     ${migrationJob}
+  Project: ${project}
+  Region:  ${region}
+`)
+
+const preparedMigration = prepareCommand(gcloudCommand, migrationArguments)
+const migrationResult = spawnSync(
+  preparedMigration.command,
+  preparedMigration.args,
+  {
+    cwd: process.cwd(),
+    env: process.env,
+    stdio: "inherit",
+    shell: false,
+  },
+)
+
+if (migrationResult.error) fail(migrationResult.error.message)
+if (migrationResult.status !== 0) {
+  fail("Database migration failed; the Cloud Run service was not deployed.")
 }
 
 const deployArguments = [

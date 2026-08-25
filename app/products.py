@@ -38,10 +38,14 @@ from app.schemas import (
 )
 from app.storage import (
     bucket_name,
+    create_image_thumbnail,
     delete_objects,
+    image_object_names_for_delete,
     product_image_object_name,
     safe_extension,
+    thumbnail_object_name,
     upload_image_object,
+    upload_thumbnail_object,
     validate_image_bytes,
 )
 
@@ -224,7 +228,14 @@ async def delete_product(
     reference = await db.scalar(select(ProductOrder.id).where(ProductOrder.product_id == product.id).limit(1))
     if reference:
         raise HTTPException(status_code=409, detail="This product belongs to an order and cannot be deleted")
-    await run_in_threadpool(delete_objects, [image.object_name for image in product.images])
+    await run_in_threadpool(
+        delete_objects,
+        [
+            object_name
+            for image in product.images
+            for object_name in image_object_names_for_delete(image.object_name)
+        ],
+    )
     await db.delete(product)
     await db.commit()
 
@@ -262,7 +273,20 @@ async def upload_product_image(
     object_name = product_image_object_name(
         vendor.id, product.id, uuid4().hex, safe_extension(filename, content_type)
     )
+    thumbnail_data = await run_in_threadpool(create_image_thumbnail, data)
+    thumbnail_name = thumbnail_object_name(object_name)
     await run_in_threadpool(upload_image_object, object_name, content_type, data)
+    try:
+        await run_in_threadpool(upload_thumbnail_object, thumbnail_name, thumbnail_data)
+    except Exception:
+        try:
+            await run_in_threadpool(
+                delete_objects,
+                image_object_names_for_delete(object_name),
+            )
+        except HTTPException:
+            pass
+        raise
     db.add(ProductImage(
         product_id=product.id,
         bucket_name=bucket_name(),
@@ -277,7 +301,10 @@ async def upload_product_image(
         await db.commit()
     except Exception:
         await db.rollback()
-        await run_in_threadpool(delete_objects, [object_name])
+        await run_in_threadpool(
+            delete_objects,
+            image_object_names_for_delete(object_name),
+        )
         raise
     return serialize_product(await _owned_product(product_id, vendor, db))
 
@@ -294,7 +321,10 @@ async def delete_product_image(
     image = next((item for item in product.images if item.id == image_id), None)
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
-    await run_in_threadpool(delete_objects, [image.object_name])
+    await run_in_threadpool(
+        delete_objects,
+        image_object_names_for_delete(image.object_name),
+    )
     await db.delete(image)
     _move_to_draft(product)
     await db.commit()

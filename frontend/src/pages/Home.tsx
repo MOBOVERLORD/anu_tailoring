@@ -139,7 +139,7 @@ const Home = () => {
               .filter((image) => image.upload_status === "ready" && Boolean(image.url))
               .sort((a, b) => a.sort_order - b.sort_order)
             const imageIndex = Math.min(cardImageIndexes[design.id] ?? 0, Math.max(0, gallery.length - 1))
-            const currentImageUrl = gallery[imageIndex]?.url || design.image_url
+            const currentImageUrl = gallery[imageIndex]?.thumbnail_url || design.thumbnail_url || gallery[imageIndex]?.url || design.image_url
             return (
               <article className="design-card" key={design.id}>
                 <div className="design-image">

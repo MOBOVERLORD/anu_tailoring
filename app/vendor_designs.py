@@ -28,10 +28,14 @@ from app.schemas import (
 )
 from app.storage import (
     bucket_name,
+    create_image_thumbnail,
     delete_objects,
     design_image_object_name,
+    image_object_names_for_delete,
     safe_extension,
+    thumbnail_object_name,
     upload_image_object,
+    upload_thumbnail_object,
     validate_image_bytes,
 )
 
@@ -185,7 +189,11 @@ async def delete_vendor_design(
 
     await run_in_threadpool(
         delete_objects,
-        [image.object_name for image in design.images],
+        [
+            object_name
+            for image in design.images
+            for object_name in image_object_names_for_delete(image.object_name)
+        ],
     )
     await db.delete(design)
     await db.commit()
@@ -243,7 +251,20 @@ async def upload_design_image(
         uuid4().hex,
         extension,
     )
+    thumbnail_data = await run_in_threadpool(create_image_thumbnail, data)
+    thumbnail_name = thumbnail_object_name(object_name)
     await run_in_threadpool(upload_image_object, object_name, content_type, data)
+    try:
+        await run_in_threadpool(upload_thumbnail_object, thumbnail_name, thumbnail_data)
+    except Exception:
+        try:
+            await run_in_threadpool(
+                delete_objects,
+                image_object_names_for_delete(object_name),
+            )
+        except HTTPException:
+            pass
+        raise
     image = DesignImage(
         design_id=design.id,
         bucket_name=bucket_name(),
@@ -261,7 +282,10 @@ async def upload_design_image(
     except Exception:
         await db.rollback()
         try:
-            await run_in_threadpool(delete_objects, [object_name])
+            await run_in_threadpool(
+                delete_objects,
+                image_object_names_for_delete(object_name),
+            )
         except HTTPException:
             pass
         raise
@@ -285,7 +309,10 @@ async def delete_design_image(
         raise HTTPException(status_code=404, detail="Image not found")
 
     try:
-        await run_in_threadpool(delete_objects, [image.object_name])
+        await run_in_threadpool(
+            delete_objects,
+            image_object_names_for_delete(image.object_name),
+        )
     except HTTPException:
         if image.upload_status != "uploading":
             raise

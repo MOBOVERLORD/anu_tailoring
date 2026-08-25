@@ -30,6 +30,7 @@ from app.orders import (
     confirm_customer_cloth_received,
     decide_vendor_invoice,
     issue_vendor_invoice,
+    get_order,
     get_order_comments,
     reject_vendor_order_item,
     save_vendor_invoice,
@@ -263,6 +264,11 @@ async def verify() -> None:
                 )
                 db.add_all([combined_item, combined_invoice])
                 await db.commit()
+                vendor_view = await get_order(combined_order.id, vendor, db)
+                customer_view = await get_order(combined_order.id, customer, db)
+                assert vendor_view["id"] == combined_order.id
+                assert customer_view["id"] == combined_order.id
+                assert vendor_view["order_items"][0]["design"]["vendor_id"] == vendor.id
                 combined_received = await confirm_combined_customer_cloth(
                     combined_order.id, vendor, db
                 )

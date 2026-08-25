@@ -431,6 +431,7 @@ class DesignImageResponse(BaseModel):
     sort_order: int
     upload_status: str
     url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -445,6 +446,7 @@ class DesignResponse(BaseModel):
     base_price: float
     is_custom_request_template: bool = False
     image_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
     vendor_id: Optional[int] = None
     vendor_name: Optional[str] = None
     status: str
@@ -573,6 +575,7 @@ class ProductResponse(BaseModel):
     status: str
     rejection_comment: Optional[str]
     image_url: Optional[str]
+    thumbnail_url: Optional[str] = None
     images: List[ProductImageResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime

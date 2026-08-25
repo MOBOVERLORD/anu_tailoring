@@ -317,7 +317,7 @@ export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdate
     <div className={`order-item-detail ${order.combined_order ? "is-combined" : ""}`}>
       <section className="order-detail-grid">
         <div className="order-detail-design">
-          <div className="order-detail-image">{item.design.image_url ? <ApiImage alt={item.design.title} src={item.design.image_url} /> : <Shirt size={34} />}</div>
+          <div className="order-detail-image">{item.design.thumbnail_url || item.design.image_url ? <ApiImage alt={item.design.title} src={item.design.thumbnail_url || item.design.image_url!} /> : <Shirt size={34} />}</div>
           <div><span className={`work-status work-${item.work_status}`}><Clock3 size={13} /> {workLabels[item.work_status]}</span><h3>{item.design.title}</h3><p>{item.design.vendor_name || "Vastrivo"}</p><strong>Tailoring service: ₹{item.price.toLocaleString("en-IN")}</strong>{canVendorReject && <button className="button button-secondary danger-text order-reject-button" disabled={Boolean(busy)} onClick={() => setRejecting(true)} type="button"><XCircle size={16} /> Reject order</button>}</div>
         </div>
         <div className="order-detail-measurements">

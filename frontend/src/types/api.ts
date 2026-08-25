@@ -32,6 +32,7 @@ export interface DesignImage {
   sort_order: number
   upload_status: "uploading" | "ready"
   url: string | null
+  thumbnail_url: string | null
 }
 
 export interface Design {
@@ -43,6 +44,7 @@ export interface Design {
   base_price: number
   is_custom_request_template: boolean
   image_url: string | null
+  thumbnail_url: string | null
   vendor_id: number | null
   vendor_name: string | null
   status: DesignStatus
@@ -80,6 +82,7 @@ export interface Product {
   status: DesignStatus
   rejection_comment: string | null
   image_url: string | null
+  thumbnail_url: string | null
   images: DesignImage[]
   created_at: string
   updated_at: string

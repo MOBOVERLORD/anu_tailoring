@@ -8,7 +8,7 @@ export const CatalogCard = ({ title, imageUrl, eyebrow, price, onPress }: { titl
   const token = currentAccessToken()
   return <Pressable onPress={onPress} style={({ pressed }) => [styles.card, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.78 : 1 }]}>
     <View style={[styles.imageWrap, { backgroundColor: colors.surfaceMuted }]}>
-      {imageUrl ? <Image resizeMode="cover" source={{ uri: absoluteUrl(imageUrl), headers: token ? { Authorization: `Bearer ${token}` } : undefined }} style={styles.image} /> : <ImageIcon color={colors.muted} size={36} />}
+      {imageUrl ? <Image fadeDuration={180} resizeMode="cover" source={{ uri: absoluteUrl(imageUrl), headers: token ? { Authorization: `Bearer ${token}` } : undefined }} style={styles.image} /> : <ImageIcon color={colors.muted} size={36} />}
     </View>
     <View style={styles.copy}>
       <Text numberOfLines={1} style={{ color: colors.primary, fontFamily: "Manrope_700Bold", fontSize: 10, textTransform: "uppercase" }}>{eyebrow}</Text>

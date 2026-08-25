@@ -365,7 +365,7 @@ const AdminWorkspace = () => {
                   <div className="review-gallery">
                     {design.images.map((image) => image.url && (
                       <button aria-label={`Zoom ${image.original_filename}`} key={image.id} onClick={() => openLightbox(design, image.id)} type="button">
-                        <ApiImage alt={`${design.title} — ${image.original_filename}`} src={image.url} />
+                        <ApiImage alt={`${design.title} — ${image.original_filename}`} src={image.thumbnail_url || image.url} />
                         <span><Maximize2 size={17} /> View</span>
                       </button>
                     ))}

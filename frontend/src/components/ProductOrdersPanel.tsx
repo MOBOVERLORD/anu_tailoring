@@ -49,7 +49,7 @@ export const ProductOrdersPanel = ({ profile, customerView = "in_progress", mode
       <div className="product-order-list">
         {visibleOrders.map((order) => (
           <article className="product-order-card" key={order.id}>
-            <div className="product-order-image">{order.product.image_url ? <ApiImage alt={order.product.title} src={order.product.image_url} /> : <Package size={26} />}</div>
+            <div className="product-order-image">{order.product.thumbnail_url || order.product.image_url ? <ApiImage alt={order.product.title} src={order.product.thumbnail_url || order.product.image_url!} /> : <Package size={26} />}</div>
             <div className="product-order-main">
               <div className="product-order-title"><div><small>Shop order #{order.id}</small><h3>{order.product.title}</h3></div><span className={`order-status status-${order.status}`}>{labels[order.status]}</span></div>
               <div className="product-order-meta"><span>{order.quantity} {order.product.unit}</span>{order.selected_size && <span>Size {order.selected_size}</span>}{order.selected_color && <span>{order.selected_color}</span>}{!isBuyer && <span><UserRound size={14} /> {order.customer.full_name}</span>}</div>

@@ -18,9 +18,79 @@ export interface UserProfile {
   is_active: boolean
 }
 
+export interface DeliveryAddress {
+  id: number
+  recipient_name: string
+  phone_number: string
+  street_address: string
+  city: string
+  state: string
+  postal_code: string
+  country: string
+  is_default: boolean
+  latitude: number | null
+  longitude: number | null
+}
+
+export interface ResolvedLocation {
+  latitude: number
+  longitude: number
+  accuracy_meters: number | null
+  formatted_address: string
+  place_id: string
+  provider_name: string
+  street_address: string | null
+  city: string | null
+  state: string | null
+  postal_code: string | null
+  country: string | null
+  location_token: string
+}
+
+export interface MeasurementFieldDefinition {
+  key: string
+  label: string
+}
+
+export interface MeasurementCategory {
+  id: number
+  name: string
+  garment_type: string
+  gender: "women" | "men" | "unisex" | "kids"
+  measurement_fields: MeasurementFieldDefinition[]
+  standard_sizes: Record<string, Record<string, number>>
+}
+
+export interface MeasurementProfile {
+  id: number
+  profile_name: string
+  gender: "women" | "men" | "unisex" | "kids"
+  garment_type: string
+  standard_size: string | null
+  unit: "inches" | "cm"
+  measurements: Record<string, number>
+  notes: string | null
+}
+
+export interface AppNotification {
+  id: number
+  title: string
+  message: string
+  notification_type: string
+  link: string | null
+  read_at: string | null
+  created_at: string
+}
+
+export interface NotificationList {
+  items: AppNotification[]
+  unread_count: number
+}
+
 export interface DesignImage {
   id: number
   url: string | null
+  thumbnail_url: string | null
   sort_order: number
 }
 
@@ -35,6 +105,7 @@ export interface Design {
   vendor_name: string | null
   status: "draft" | "submitted" | "approved" | "rejected"
   image_url: string | null
+  thumbnail_url: string | null
   images: DesignImage[]
 }
 
@@ -44,6 +115,7 @@ export interface Product {
   vendor_name: string
   title: string
   description: string
+  product_type: "ready_made" | "fabric"
   price: number
   unit: "piece" | "metre"
   stock_quantity: number
@@ -53,6 +125,8 @@ export interface Product {
   colors: string[]
   status: "draft" | "submitted" | "approved" | "rejected"
   image_url: string | null
+  thumbnail_url: string | null
+  images: DesignImage[]
 }
 
 export interface VendorDirectoryItem {
@@ -65,6 +139,7 @@ export interface VendorDirectoryItem {
   logo_url: string | null
   is_favorite: boolean
   accepts_custom_orders: boolean
+  custom_design_id: number | null
 }
 
 export interface InvoiceSummary {

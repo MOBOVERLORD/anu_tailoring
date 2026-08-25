@@ -21,12 +21,15 @@ from app.models import (
 from app.schemas import VendorApplicationResponse
 from app.storage import (
     bucket_name,
+    create_image_thumbnail,
     delete_objects,
     download_image_object,
     private_object_etag,
     profile_image_object_name,
     safe_extension,
+    thumbnail_object_name,
     upload_image_object,
+    upload_thumbnail_object,
     validate_image_bytes,
     vendor_logo_object_name,
 )
@@ -68,6 +71,37 @@ def _private_image_response(
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=headers)
     return Response(content=content, media_type=content_type, headers=headers)
+
+
+async def _download_catalog_image(
+    object_name: str,
+    content_type: str,
+    thumbnail: bool,
+) -> tuple[str, str, bytes, int]:
+    """Load an original or its optimized catalog preview.
+
+    Existing production uploads are backfilled lazily the first time their
+    thumbnail is requested. New uploads already have the preview in storage.
+    """
+    if not thumbnail:
+        content = await run_in_threadpool(download_image_object, object_name)
+        return object_name, content_type, content, 300
+
+    preview_name = thumbnail_object_name(object_name)
+    try:
+        content = await run_in_threadpool(download_image_object, preview_name)
+    except HTTPException as exc:
+        if exc.status_code != status.HTTP_404_NOT_FOUND:
+            raise
+        original = await run_in_threadpool(download_image_object, object_name)
+        content = await run_in_threadpool(create_image_thumbnail, original)
+        try:
+            await run_in_threadpool(upload_thumbnail_object, preview_name, content)
+        except HTTPException:
+            # The generated response is still useful even when a transient GCS
+            # write failure prevents caching it for the next request.
+            pass
+    return preview_name, "image/webp", content, 86_400
 
 
 @router.post("/profile-image", response_model=VendorApplicationResponse)
@@ -172,6 +206,7 @@ async def get_vendor_logo(
 async def get_design_image(
     image_id: int,
     request: Request,
+    thumbnail: bool = False,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -199,9 +234,11 @@ async def get_design_image(
     if not can_view:
         raise HTTPException(status_code=404, detail="Image not found")
 
-    etag = private_object_etag(image.object_name)
+    served_name = thumbnail_object_name(image.object_name) if thumbnail else image.object_name
+    etag = private_object_etag(served_name)
+    max_age = 86_400 if thumbnail else 300
     cache_headers = {
-        "Cache-Control": "private, max-age=300",
+        "Cache-Control": f"private, max-age={max_age}",
         "ETag": etag,
         "Vary": "Authorization, Cookie",
         "X-Content-Type-Options": "nosniff",
@@ -209,10 +246,15 @@ async def get_design_image(
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=cache_headers)
 
-    content = await run_in_threadpool(download_image_object, image.object_name)
+    _, served_type, content, _ = await _download_catalog_image(
+        image.object_name,
+        image.content_type,
+        thumbnail,
+    )
+
     return Response(
         content=content,
-        media_type=image.content_type,
+        media_type=served_type,
         headers=cache_headers,
     )
 
@@ -221,6 +263,7 @@ async def get_design_image(
 async def get_product_image(
     image_id: int,
     request: Request,
+    thumbnail: bool = False,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -251,14 +294,20 @@ async def get_product_image(
     if not can_view:
         raise HTTPException(status_code=404, detail="Image not found")
 
-    etag = private_object_etag(image.object_name)
+    served_name = thumbnail_object_name(image.object_name) if thumbnail else image.object_name
+    etag = private_object_etag(served_name)
+    max_age = 86_400 if thumbnail else 300
     cache_headers = {
-        "Cache-Control": "private, max-age=300",
+        "Cache-Control": f"private, max-age={max_age}",
         "ETag": etag,
         "Vary": "Authorization, Cookie",
         "X-Content-Type-Options": "nosniff",
     }
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers=cache_headers)
-    content = await run_in_threadpool(download_image_object, image.object_name)
-    return Response(content=content, media_type=image.content_type, headers=cache_headers)
+    _, served_type, content, _ = await _download_catalog_image(
+        image.object_name,
+        image.content_type,
+        thumbnail,
+    )
+    return Response(content=content, media_type=served_type, headers=cache_headers)

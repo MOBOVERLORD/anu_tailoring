@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "setup": "node scripts/dev.mjs --setup-only",
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:status": "node scripts/migrate.mjs current",
     "deploy:gcp": "node scripts/deploy-gcp.mjs",
     "build": "npm --prefix frontend run build",
     "lint": "npm --prefix frontend run lint",

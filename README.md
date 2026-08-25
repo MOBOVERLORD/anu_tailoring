@@ -60,7 +60,22 @@ The existing `.env` is used automatically. For a new checkout:
 3. Fill in the PostgreSQL password, JWT secret, and initial admin credentials.
 4. Run `.\start-dev.cmd`.
 
-FastAPI creates the initial tables and admin account when the backend starts.
+The launcher installs dependencies, runs `alembic upgrade head`, and then starts
+the UI and API. FastAPI verifies that PostgreSQL is at the expected migration
+revision before it performs safe reference-data and initial-admin seeding; it
+does not create or alter tables during application startup.
+
+Database-only commands are available when you do not need to start the app:
+
+```powershell
+npm.cmd run db:migrate
+npm.cmd run db:status
+```
+
+For every schema change, create and review a new Alembic revision and apply it
+before deploying code that depends on it. Never edit a migration already used
+in a shared environment.
+
 Public registration always creates a `customer`. The configured seeded account
 is the `super_admin`; it can create verified vendors and manage customer/vendor
 access. Regular `admin` accounts can review designs and view account directories
@@ -271,13 +286,23 @@ $env:GCP_REGION="asia-south1"
 $env:GCP_CLOUD_SQL_INSTANCE="PROJECT:REGION:INSTANCE"
 $env:GCP_DESIGN_BUCKET="YOUR_PRIVATE_DESIGN_BUCKET"
 $env:GCP_SERVICE_ACCOUNT="YOUR_RUNTIME_SERVICE_ACCOUNT_EMAIL"
+$env:GCP_DATABASE_SECRET="YOUR_DATABASE_SECRET"
+$env:GCP_JWT_SECRET="YOUR_JWT_SECRET"
 
 .\deploy-gcp.cmd `
   --set-secrets=DATABASE_URL=YOUR_DATABASE_SECRET:latest,SECRET_KEY=YOUR_JWT_SECRET:latest,GOOGLE_MAPS_API_KEY=YOUR_MAPS_KEY_SECRET:latest,RAZORPAY_KEY_ID=YOUR_RAZORPAY_KEY_ID_SECRET:latest,RAZORPAY_KEY_SECRET=YOUR_RAZORPAY_KEY_SECRET_SECRET:latest,RAZORPAY_WEBHOOK_SECRET=YOUR_RAZORPAY_WEBHOOK_SECRET:latest
 ```
 
-The command builds from the repository `Dockerfile`, deploys the Cloud Run
-service, and prints its public URL. Future deployments use the same command.
+The command first builds and executes a single-task Cloud Run Job named
+`anu-tailoring-migrate` (or `<GCP_SERVICE>-migrate`). The job runs `alembic
+upgrade head` with the same runtime identity and Cloud SQL connection. Only
+after it succeeds does the command build and deploy the Cloud Run service. This
+prevents a new revision from receiving traffic against an older schema. The
+migration job needs Secret Manager access to the database and JWT secrets and
+the runtime identity needs Cloud SQL Client. This follows Google Cloud's
+recommended Cloud Run Job pattern for database migrations.
+
+The service then prints its public URL. Future deployments use the same command.
 Cloud Run preserves the service configuration, so after the first deployment
 you can normally run:
 

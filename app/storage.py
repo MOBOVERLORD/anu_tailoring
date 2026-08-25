@@ -1,5 +1,6 @@
 from functools import lru_cache
 import hashlib
+from io import BytesIO
 from pathlib import PurePath
 
 from fastapi import HTTPException, status
@@ -128,6 +129,16 @@ def product_image_object_name(
     return f"vendors/{vendor_id}/products/{product_id}/{image_key}{extension}"
 
 
+def thumbnail_object_name(object_name: str) -> str:
+    """Return the deterministic private WebP preview stored beside an original."""
+    path = PurePath(object_name)
+    return str(path.with_suffix(".thumb.webp")).replace("\\", "/")
+
+
+def image_object_names_for_delete(object_name: str) -> list[str]:
+    return [object_name, thumbnail_object_name(object_name)]
+
+
 def profile_image_object_name(user_id: int, image_key: str, extension: str) -> str:
     return f"users/{user_id}/profile/{image_key}{extension}"
 
@@ -173,6 +184,35 @@ def validate_image_bytes(data: bytes, content_type: str) -> None:
         )
 
 
+def create_image_thumbnail(data: bytes, max_edge: int = 900) -> bytes:
+    """Create a small, high-quality WebP preview for catalog cards.
+
+    Pillow verifies and decodes the image here as an additional safety check.
+    EXIF orientation is applied before resizing so phone uploads display correctly.
+    """
+    try:
+        from PIL import Image, ImageOps, UnidentifiedImageError
+
+        with Image.open(BytesIO(data)) as source:
+            image = ImageOps.exif_transpose(source)
+            if image.mode not in {"RGB", "RGBA"}:
+                image = image.convert("RGBA" if "transparency" in image.info else "RGB")
+            image.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
+            output = BytesIO()
+            image.save(output, format="WEBP", quality=80, method=6)
+            return output.getvalue()
+    except (
+        UnidentifiedImageError,
+        Image.DecompressionBombError,
+        OSError,
+        ValueError,
+    ) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The uploaded image could not be processed",
+        ) from exc
+
+
 def validate_invoice_attachment_bytes(data: bytes, content_type: str) -> None:
     if content_type == "application/pdf":
         valid = data.startswith(b"%PDF-")
@@ -200,6 +240,18 @@ def upload_image_object(object_name: str, content_type: str, data: bytes) -> Non
         )
     except Exception as exc:
         _raise_storage_error("upload the image", exc)
+
+
+def upload_thumbnail_object(object_name: str, data: bytes) -> None:
+    """Create or replace a deterministic thumbnail (safe for concurrent retries)."""
+    try:
+        client = _storage_client()
+        client.bucket(bucket_name()).blob(object_name).upload_from_string(
+            data,
+            content_type="image/webp",
+        )
+    except Exception as exc:
+        _raise_storage_error("upload the image preview", exc)
 
 
 def upload_invoice_attachment(object_name: str, content_type: str, data: bytes) -> None:

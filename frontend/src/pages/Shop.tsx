@@ -82,7 +82,6 @@ const Shop = () => {
     <div className="page shop-page">
       <section className="workspace-heading shop-heading">
         <div><p className="eyebrow"><ShoppingBag size={15} /> Vastrivo shop</p><h1>Clothes and fabrics, from verified vendors</h1><p>Buy ready-made garments or fabric by length, with delivery calculated from the vendor to your address.</p></div>
-        <span className="queue-count">{products.length} available</span>
       </section>
 
       <section className="orders-toolbar" aria-label="Filter shop products">
@@ -98,7 +97,7 @@ const Shop = () => {
           {visible.map((product) => (
             <article className="product-card" key={product.id}>
               <button className="product-card-image" onClick={() => void openProduct(product)} type="button">
-                {product.image_url ? <ApiImage alt={product.title} src={product.image_url} /> : <ImageIcon size={42} />}
+                {product.thumbnail_url || product.image_url ? <ApiImage alt={product.title} src={product.thumbnail_url || product.image_url!} /> : <ImageIcon size={42} />}
                 <span>{product.product_type === "fabric" ? "Fabric" : "Ready-made"}</span>
               </button>
               <div className="product-card-body"><small>{product.vendor_name} · {product.category}</small><h2>{product.title}</h2><p>{product.description}</p><div><strong>{money(product.price)} <small>/ {product.unit}</small></strong><span>{product.stock_quantity} {product.unit} in stock</span></div><button className="button button-primary button-wide" onClick={() => void openProduct(product)} type="button">View & buy</button></div>
@@ -112,7 +111,7 @@ const Shop = () => {
           <div className="product-dialog-grid">
             <div className="product-gallery">
               {selected.image_url ? <button aria-label={`Open ${selected.title} image gallery`} className="product-main-image" onClick={() => setLightbox({ images: selected.images, index: 0 })} type="button"><ApiImage alt={selected.title} src={selected.image_url} /><span className="product-image-hint"><ImageIcon size={15} /> View full size</span><span className="product-image-count">1 / {selected.images.length}</span></button> : <div className="product-main-image product-image-empty"><ImageIcon /><span>No product image</span></div>}
-              {selected.images.length > 1 && <div className="product-thumbnails">{selected.images.map((image, index) => image.url && <button onClick={() => setLightbox({ images: selected.images, index })} type="button" key={image.id}><ApiImage alt={`${selected.title} view ${index + 1}`} src={image.url} /></button>)}</div>}
+              {selected.images.length > 1 && <div className="product-thumbnails">{selected.images.map((image, index) => (image.thumbnail_url || image.url) && <button onClick={() => setLightbox({ images: selected.images, index })} type="button" key={image.id}><ApiImage alt={`${selected.title} view ${index + 1}`} src={image.thumbnail_url || image.url!} /></button>)}</div>}
             </div>
             <div className="product-purchase">
               <div className="product-kicker-row"><span className="product-verified"><CheckCircle2 size={14} /> Verified listing</span><span>{selected.category}</span></div>

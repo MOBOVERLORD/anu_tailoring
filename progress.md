@@ -1062,21 +1062,65 @@ The presets follow Indian vocational tailoring material rather than one universa
   automatically closes after three seconds. Long backend error text wraps safely
   inside the notification instead of overflowing the viewport.
 
+## Catalog performance and mobile issue pass
+
+- Added private 900 px WebP thumbnails for every new design and product upload.
+  Existing catalog images are converted and cached lazily on their first thumbnail
+  request, so no database migration or public bucket access is required.
+- Catalog grids now defer authenticated image downloads until they approach the
+  viewport and use the compressed preview. Detail dialogs and image lightboxes keep
+  the original-resolution source. Original and thumbnail objects are deleted together.
+- Removed public published/available counters from vendor storefronts and removed
+  design/shop totals from the native discovery switcher.
+- Reworked the native profile into read-only details with explicit pencil editing and
+  a compact menu for theme, delivery addresses, measurements, activity, and sign out.
+- Added native address, measurement, activity-log, Studio product, and vendor custom-
+  order screens. Studio now presents Designs and Products as separate actions, and
+  product creation includes 1-10 private images with the shared 5 MB limit.
+- Corrected order-detail authorization so the customer, participating vendor, and
+  administrators can open an authorized order while unrelated users still receive 404.
+- Verification completed with frontend build/lint, Expo TypeScript/config checks,
+  Python compilation, catalog-thumbnail verification, product-shop regression checks,
+  and the order workflow suite including vendor order-detail access.
+
+## Versioned database migration milestone
+
+- Added Alembic with a single, frozen `20260826_0001` baseline that can create a
+  fresh PostgreSQL schema or idempotently adopt databases created by the former
+  startup initializer. Its downgrade is intentionally non-destructive.
+- Removed all table creation, `ALTER TABLE`, enum changes, and index creation
+  from FastAPI startup. Startup now checks `alembic_version` against the code's
+  migration head, fails with an actionable error when deployment skipped a
+  migration, and then performs only expired-token cleanup plus reference/admin
+  data seeding.
+- `start-dev.cmd` now applies `alembic upgrade head` before starting FastAPI and
+  Vite. Added `npm run db:migrate` and `npm run db:status` for explicit local use.
+- The production image now contains the migration configuration and revisions.
+  `deploy-gcp.cmd` first executes a one-task `<service>-migrate` Cloud Run Job
+  with Cloud SQL and Secret Manager access, and deploys the service only when
+  that migration succeeds.
+- Added a regression check that creates a uniquely named disposable PostgreSQL
+  database, upgrades it from empty to head, verifies required tables/revision,
+  and drops it. Existing local data was adopted at the same head without table
+  or object deletion.
+- Verification completed with Python and launcher syntax checks, migration
+  graph/history, `npm run db:status`, existing-database upgrade and startup
+  checks, a fresh 30-table database migration at revision `20260826_0001`, and
+  the auth, mobile-auth, order-invoice, delivery, and Razorpay regressions.
+
 ## Recommended next milestone
 
-1. Replace startup compatibility statements with versioned Alembic migrations
-   before production data exists.
-2. Add API-level integration tests for role authorization, backend upload
+1. Add API-level integration tests for role authorization, backend upload
    completion, moderation transitions, bucket cleanup, and notification ownership.
-3. Add per-measurement “how to measure” guidance and diagrams.
-4. Add a Cloud Tasks dispatcher for outbox retries at production scale, plus
+2. Add per-measurement “how to measure” guidance and diagrams.
+3. Add a Cloud Tasks dispatcher for outbox retries at production scale, plus
    vendor business profiles, admin audit logs, and forced temporary-password change.
-5. Move persisted monetary columns from FLOAT to PostgreSQL NUMERIC, generate
-   image thumbnails, and add server-side catalog/order search before large-scale use.
-6. Complete Razorpay KYC/live-mode activation, configure the production webhook
+4. Move persisted monetary columns from FLOAT to PostgreSQL NUMERIC and add
+   server-side catalog/order search before large-scale use.
+5. Complete Razorpay KYC/live-mode activation, configure the production webhook
    secret in Secret Manager, and run a small live payment/refund smoke test before
    accepting customer payments broadly.
-7. Continue mobile Phase 0 with versioned API contracts, push-device registration,
+6. Continue mobile Phase 0 with versioned API contracts, push-device registration,
    shared generated types, idempotent uploads, and the remaining customer/vendor
    daily workflows before TestFlight and Play internal testing.
 

@@ -178,6 +178,11 @@ if (setupOnly) {
   process.exit(0)
 }
 
+console.log("\n[database] Applying versioned database migrations...")
+run(localPython, ["-m", "alembic", "upgrade", "head"], {
+  label: "database migration",
+})
+
 console.log(`
 ============================================================
  Vastrivo development environment
