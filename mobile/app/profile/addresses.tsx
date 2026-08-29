@@ -2,6 +2,7 @@ import * as Location from "expo-location"
 import { useCallback, useEffect, useState } from "react"
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native"
 import { LocateFixed, MapPin, Plus, Trash2, X } from "lucide-react-native"
+import MapView, { Marker } from "react-native-maps"
 import { useSession } from "@/auth/SessionProvider"
 import { api } from "@/lib/api"
 import type { DeliveryAddress, ResolvedLocation } from "@/types/api"
@@ -28,15 +29,18 @@ export default function AddressesScreen() {
   }, [])
   useEffect(() => { void load() }, [load])
 
+  const resolveCoordinates = async (latitude: number, longitude: number, accuracyMeters: number | null = null) => {
+    const place = await api<ResolvedLocation>("/api/addresses/resolve-location", { method: "POST", body: JSON.stringify({ latitude, longitude, accuracy_meters: accuracyMeters }) })
+    setResolved(place)
+    setStreet(place.street_address || place.formatted_address)
+  }
   const locate = async () => {
     setLocating(true); setError("")
     try {
       const permission = await Location.requestForegroundPermissionsAsync()
       if (permission.status !== "granted") throw new Error("Location permission is required when you choose Locate me.")
       const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High })
-      const place = await api<ResolvedLocation>("/api/addresses/resolve-location", { method: "POST", body: JSON.stringify({ latitude: position.coords.latitude, longitude: position.coords.longitude, accuracy_meters: position.coords.accuracy }) })
-      setResolved(place)
-      setStreet(place.street_address || place.formatted_address)
+      await resolveCoordinates(position.coords.latitude, position.coords.longitude, position.coords.accuracy)
     } catch (value) { setError((value as Error).message) } finally { setLocating(false) }
   }
 
@@ -67,7 +71,7 @@ export default function AddressesScreen() {
       <Text style={{ color: colors.text, fontFamily: "Fraunces_700Bold", fontSize: 21 }}>Pin the delivery point</Text>
       <Text style={{ color: colors.muted, fontFamily: "Manrope_400Regular", lineHeight: 20, marginBottom: 14 }}>Use your device location to securely fill the mapped address.</Text>
       <AppButton disabled={locating || saving} onPress={() => void locate()} variant="secondary"><LocateFixed color={colors.text} size={18} />{locating ? "Locating…" : resolved ? "Update location" : "Locate me"}</AppButton>
-      {resolved && <View style={[styles.resolved, { backgroundColor: colors.primarySoft }]}><MapPin color={colors.primary} size={19} /><View style={{ flex: 1 }}><Text style={{ color: colors.text, fontFamily: "Manrope_700Bold", lineHeight: 20 }}>{resolved.formatted_address}</Text><Text style={{ color: colors.muted, fontFamily: "Manrope_400Regular", fontSize: 11, marginTop: 4 }}>{resolved.provider_name}</Text></View></View>}
+      {resolved && <><MapView initialRegion={{ latitude: resolved.latitude, longitude: resolved.longitude, latitudeDelta: 0.008, longitudeDelta: 0.008 }} region={{ latitude: resolved.latitude, longitude: resolved.longitude, latitudeDelta: 0.008, longitudeDelta: 0.008 }} style={styles.map}><Marker coordinate={{ latitude: resolved.latitude, longitude: resolved.longitude }} draggable onDragEnd={(event) => { const coordinate = event.nativeEvent.coordinate; setLocating(true); void resolveCoordinates(coordinate.latitude, coordinate.longitude).catch((value) => setError((value as Error).message)).finally(() => setLocating(false)) }} title="Delivery point" /></MapView><Text style={{ color: colors.muted, fontFamily: "Manrope_500Medium", fontSize: 11, marginTop: 7 }}>Drag the map pin to choose a different nearby entrance or delivery point.</Text><View style={[styles.resolved, { backgroundColor: colors.primarySoft }]}><MapPin color={colors.primary} size={19} /><View style={{ flex: 1 }}><Text style={{ color: colors.text, fontFamily: "Manrope_700Bold", lineHeight: 20 }}>{resolved.formatted_address}</Text><Text style={{ color: colors.muted, fontFamily: "Manrope_400Regular", fontSize: 11, marginTop: 4 }}>{resolved.provider_name}</Text></View></View></>}
       <Field label="Recipient name" maxLength={100} onChangeText={setRecipient} value={recipient} />
       <Field keyboardType="phone-pad" label="Phone number" maxLength={20} onChangeText={setPhone} value={phone} />
       <Field label="House, building, street and area" maxLength={500} multiline numberOfLines={3} onChangeText={setStreet} style={{ minHeight: 88, textAlignVertical: "top" }} value={street} />
@@ -84,4 +88,5 @@ const styles = StyleSheet.create({
   resolved: { borderRadius: 15, flexDirection: "row", gap: 10, marginVertical: 14, padding: 13 },
   card: { alignItems: "flex-start", borderRadius: 18, borderWidth: 1, flexDirection: "row", gap: 11, marginBottom: 11, padding: 15 },
   cardTitle: { alignItems: "center", flexDirection: "row", gap: 8 },
+  map: { borderRadius: 16, height: 220, marginTop: 14, overflow: "hidden", width: "100%" },
 })

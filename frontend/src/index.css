@@ -8635,6 +8635,11 @@ a.map-attribution {
   gap: 2px;
 }
 
+.order-cancellation-bar {
+  margin-top: 18px;
+  margin-bottom: 0;
+}
+
 .order-cancellation-bar small,
 .order-closed-state p {
   color: var(--text-soft);
@@ -9705,6 +9710,8 @@ a.map-attribution {
   .order-cancellation-bar {
     align-items: stretch;
     flex-direction: column;
+    margin-right: 14px;
+    margin-left: 14px;
   }
 
   .order-cancellation-bar .button {
@@ -10291,7 +10298,7 @@ a.map-attribution {
   .cart-line-price { grid-column: 2; }
   .cart-line > .icon-button { grid-column: 3; grid-row: 1; }
 }
-.combined-order-invoice, .combined-product-lines { display: grid; gap: 16px; padding: 20px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-soft); }
+.combined-order-invoice, .combined-product-lines { display: grid; gap: 16px; margin: 20px 20px 0; padding: 20px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-soft); }
 .combined-order-invoice > header, .combined-product-lines > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .combined-order-invoice > header > div, .combined-product-lines > header { display: flex; align-items: center; gap: 12px; }
 .combined-order-invoice header span, .combined-product-lines header div { display: grid; }
@@ -10327,6 +10334,7 @@ a.map-attribution {
 .combined-invoice-locks small { color: var(--muted); }
 
 @media (max-width: 700px) {
+  .combined-order-invoice, .combined-product-lines { margin-right: 14px; margin-left: 14px; padding: 14px; }
   .combined-invoice-costs, .combined-invoice-locks { grid-template-columns: 1fr 1fr; }
   .combined-order-invoice > header { align-items: flex-start; flex-direction: column; }
   .combined-product-lines article { grid-template-columns: 44px minmax(0, 1fr) auto; }

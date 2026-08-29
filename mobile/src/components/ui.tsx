@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context"
 import { AlertCircle, ArrowLeft } from "lucide-react-native"
 import { useRouter } from "expo-router"
 import { useTheme } from "@/theme/theme"
+import { NotificationButton } from "@/components/NotificationButton"
 
 export const Heading = ({ children, size = 30 }: { children: ReactNode; size?: number }) => {
   const { colors } = useTheme()
@@ -51,7 +52,7 @@ export const PageHeader = ({ title, subtitle, back = false, action }: { title: s
       <Heading>{title}</Heading>
       {subtitle && <Text style={{ color: colors.muted, fontFamily: "Manrope_400Regular", fontSize: 14, lineHeight: 21, marginTop: 5 }}>{subtitle}</Text>}
     </View>
-    {action}
+    {(!back || action) && <View style={styles.headerActions}>{!back && <NotificationButton />}{action}</View>}
   </View>
 }
 
@@ -81,6 +82,7 @@ const styles = StyleSheet.create({
   input: { borderRadius: 14, borderWidth: 1, fontFamily: "Manrope_500Medium", fontSize: 16, minHeight: 52, paddingHorizontal: 15, paddingVertical: 13 },
   button: { alignItems: "center", borderRadius: 14, borderWidth: 1, justifyContent: "center", minHeight: 50, paddingHorizontal: 18 },
   header: { alignItems: "flex-start", flexDirection: "row", gap: 12, marginBottom: 22 },
+  headerActions: { alignItems: "center", flexDirection: "row", gap: 8 },
   back: { alignItems: "center", height: 38, justifyContent: "center", marginBottom: 9, marginLeft: -8, width: 38 },
   center: { alignItems: "center", flex: 1, justifyContent: "center", minHeight: 320 },
   stateCard: { alignItems: "center", borderRadius: 20, borderWidth: 1, marginTop: 20, padding: 28 },

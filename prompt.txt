@@ -1,0 +1,6 @@
+I want to make the UI & UX work with features , lets start with basic
+login page, with logo and icons and buttons, with light and dark theme included for everything
+post login, will be a grid page which shows clothes designs , for now it is empty as there is no data,
+add a profile section which user can click it will show profile and logout options, on click of proflie it should navigate to user details, where user can edit info apart from email , user details include name, phone number, location,
+measurements can be multiple with a name, check how tailoring mesurements are taking in india for both men and women, can add multiple address for delivery,
+in the grid menu there should be an option to show user fav designs, update code as well if reuired to reach these initial goals, maintain a progress.md file to add progress and continue in another chats

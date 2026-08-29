@@ -16,7 +16,7 @@ export default function TabsLayout() {
     <Tabs.Screen name="designs" options={{ tabBarIcon: ({ color, size }) => <Grid2X2 color={color} size={size} />, title: "Discover" }} />
     <Tabs.Screen name="vendors" options={{ tabBarIcon: ({ color, size }) => <Store color={color} size={size} />, title: "Vendors" }} />
     <Tabs.Screen name="orders" options={{ tabBarIcon: ({ color, size }) => <ClipboardList color={color} size={size} />, title: "My orders" }} />
-    <Tabs.Screen name="workspace" options={{ tabBarIcon: ({ color, size }) => <WandSparkles color={color} size={size} />, title: workspaceLabel }} />
+    <Tabs.Screen name="workspace" options={{ href: profile?.role === "vendor" || profile?.role === "delivery_agent" ? undefined : null, tabBarIcon: ({ color, size }) => <WandSparkles color={color} size={size} />, title: workspaceLabel }} />
     <Tabs.Screen name="profile" options={{ tabBarIcon: ({ color, size }) => <UserRound color={color} size={size} />, title: "Profile" }} />
   </Tabs>
 }

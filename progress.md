@@ -1105,10 +1105,85 @@ The presets follow Indian vocational tailoring material rather than one universa
   or object deletion.
 - Verification completed with Python and launcher syntax checks, migration
   graph/history, `npm run db:status`, existing-database upgrade and startup
-  checks, a fresh 30-table database migration at revision `20260826_0001`, and
+  checks, a fresh 30-table database migration through revision `20260826_0003`, a
+  clean Alembic model-drift check, and
   the auth, mobile-auth, order-invoice, delivery, and Razorpay regressions.
 
+## Native first-release workflow milestone
+
+- Completed the remaining native customer, vendor, and delivery-agent daily
+  workflows. Administrative moderation, user management, settlements, and dispatch
+  remain intentionally web-console workflows for the first store release.
+- Added an unread notification bell to top-level native screens. The notification
+  inbox shows only unread updates, supports read/read-all actions, and preserves
+  read history in the existing Activity log.
+- Moved the customer vendor application out of the generic Workspace tab and into
+  Profile as “Become a vendor”. Customer and administration accounts no longer see
+  an empty Workspace tab; vendors retain Studio and delivery agents retain Deliveries.
+- Added native order chat for every tailoring item with authenticated send and
+  incremental five-second refresh. Customer and vendor messages share the same
+  backend conversation and notification ownership rules as the web application.
+- Added native vendor invoice creation/editing for single and combined orders,
+  including service price, cloth requirement/cost, additional line items, draft/send,
+  and 5 MB cloth-bill image proof. Customers can approve or request invoice changes,
+  complete Razorpay payments, and see invoice totals in the same order view.
+- Added vendor cloth-receipt confirmation, tailoring stage actions, and the paid
+  ready-for-shipping handoff. Delivery agents retain assignment status actions and
+  can now see pickup/drop-off markers and a route preview inside each delivery card.
+- Added `react-native-maps` with a draggable address pin. “Locate me” reverse-resolves
+  through the backend and customers can adjust the precise delivery point before save.
+- Catalog grid cards now support horizontal, paged image swiping with an image counter
+  while continuing to request optimized private thumbnails; detail screens keep the
+  full-resolution images.
+- Cleared the completed entries from `issues.md`. Verification passed with the Expo
+  TypeScript/config check, Expo Doctor (18/18), frontend production build, Alembic
+  upgrade/current/drift checks at `20260826_0003`, Python compilation, order-invoice,
+  delivery-management, and authentication regressions, plus `git diff --check`.
+
+## Native live order-status tracker correction
+
+- Replaced the fixed native order footer—which always highlighted Invoice and
+  Fulfilment—with stages derived from the current invoice, every active tailoring
+  item, final payment, order, and delivery records.
+- Tailoring now exposes the live substage in the footer: awaiting invoice/cloth,
+  ready to start, fabric cutting, stitching, quality check, or completed. Combined
+  orders also show how many items are complete without advancing past a slower item.
+- Vendor actions refresh the order immediately. While the order is open, a quiet
+  five-second refresh keeps customer/vendor views synchronized; returning to the
+  cached screen also fetches fresh server state.
+- Verification passed with the native Expo TypeScript and public-config check.
+
+## Expanded web-order spacing correction
+
+- Added a clear top gutter above cancellation/locked notices so their border no
+  longer touches the order context strip.
+- Added outer gutters around combined invoice and product cards inside expanded
+  orders: 20 px on desktop and 14 px on mobile, matching the surrounding order
+  item layout without changing the card sizes.
+- Verified the generated local CSS rules, frontend production build, and lint.
+
+## Vendor Studio navigation — feature 1
+
+- Replaced the native vendor Studio's detached status tiles and recent-order feed
+  with three accessible navigation rows for Designs, Products, and Customer orders.
+- Studio now shows compact draft/pending badges for designs and products and the
+  total customer-order count; these refresh whenever the Studio regains focus.
+- Added Draft, Pending, Approved, and Rejected count filters inside the dedicated
+  design and product screens, where listing status now belongs.
+- Added a dedicated vendor Customer orders screen with Active, All, Delivered, and
+  Cancelled filters, pull-to-refresh, customer identity, totals, and order-detail
+  navigation. Vendor purchases remain separate under My orders.
+- Fixed Android filter-chip clipping on the Customer orders screen by constraining
+  the horizontal filter row, centring each chip, and using an explicit text line height.
+- Feature 1 from `continue.md` is complete. Vendor customer relationships are the
+  next isolated feature. Native Expo TypeScript and public-config verification passed
+  again after the Android Customer orders filter-chip layout correction.
+
 ## Recommended next milestone
+
+The detailed next-session specification is saved in [`continue.md`](continue.md).
+It covers the Vendor Studio navigation redesign and vendor customer, measurement,
+standalone invoice, private PDF, native, and web work requested on 29 August 2026.
 
 1. Add API-level integration tests for role authorization, backend upload
    completion, moderation transitions, bucket cleanup, and notification ownership.
@@ -1120,10 +1195,12 @@ The presets follow Indian vocational tailoring material rather than one universa
 5. Complete Razorpay KYC/live-mode activation, configure the production webhook
    secret in Secret Manager, and run a small live payment/refund smoke test before
    accepting customer payments broadly.
-6. Continue mobile Phase 0 with versioned API contracts, push-device registration,
-   shared generated types, idempotent uploads, and the remaining customer/vendor
-   daily workflows before TestFlight and Play internal testing.
+6. Continue mobile hardening with push-device registration, shared generated API
+   types, idempotent uploads, accessibility/device-matrix testing, and signed
+   TestFlight/Play internal builds.
 
 ## Resume prompt
 
-“Continue from `progress.md`. Start with the next milestone, preserve the current warm editorial UI and both themes, and update `progress.md` when done.”
+“Continue from `continue.md`, then use `progress.md` for completed-project context.
+Preserve the current warm editorial UI and both themes, and update both tracking
+files when the milestone is done.”

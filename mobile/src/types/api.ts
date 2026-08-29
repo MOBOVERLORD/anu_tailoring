@@ -107,6 +107,7 @@ export interface Design {
   image_url: string | null
   thumbnail_url: string | null
   images: DesignImage[]
+  is_custom_request_template?: boolean
 }
 
 export interface Product {
@@ -150,6 +151,35 @@ export interface InvoiceSummary {
   payment_status: "not_required" | "pending" | "submitted" | "paid"
   final_payment_status: "pending" | "paid"
   status: "draft" | "issued" | "approved" | "change_requested"
+  revision: number
+  service_amount: number
+  merchandise_amount: number
+  cloth_source: "customer_provided" | "vendor_supplied"
+  cloth_type: string
+  cloth_requirement: string
+  delivery_cost: number
+  line_items: InvoiceLineItem[]
+  additional_amount: number
+  cloth_received: boolean
+  cloth_bill_url: string | null
+}
+
+export interface InvoiceLineItem {
+  id: number
+  name: string
+  description: string | null
+  quantity: number
+  unit_price: number
+  total_amount: number
+}
+
+export interface OrderComment {
+  id: number
+  author_id: number
+  author_name: string
+  author_role: UserRole
+  message: string
+  created_at: string
 }
 
 export interface OrderItem {
@@ -157,6 +187,12 @@ export interface OrderItem {
   work_status: string
   design: Design
   invoice?: InvoiceSummary | null
+  cloth_source: "customer_provided" | "vendor_supplied"
+  fabric_choice: string | null
+  custom_instructions: string | null
+  measurement_snapshot: { unit?: string; measurements?: Record<string, number> } | null
+  price: number
+  comments: OrderComment[]
 }
 
 export interface Order {
@@ -170,6 +206,9 @@ export interface Order {
   order_items: OrderItem[]
   product_items: unknown[]
   invoice: InvoiceSummary | null
+  customer: Pick<UserProfile, "id" | "full_name" | "email" | "phone">
+  delivery_address: DeliveryAddress
+  deliveries: Array<{ id: number; fulfilment_method: string; status: string; tracking_number: string | null }>
 }
 
 export interface PaginatedOrders {
