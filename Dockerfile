@@ -35,4 +35,7 @@ RUN addgroup --system vastrivo \
 USER vastrivo
 EXPOSE 8080
 
-CMD ["sh", "-c", "python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+# The entrypoint performs a fast schema-head check. If a Git-connected deploy
+# bypassed the dedicated migration job, it serializes and applies Alembic before
+# replacing itself with Uvicorn. Migration errors still fail the revision.
+CMD ["python", "-m", "app.production_startup"]

@@ -1274,3 +1274,17 @@ files when the milestone is done.”
   reports no model drift, compiled the Python application/scripts, and passed the
   frontend production build and lint (with only the three pre-existing Fast Refresh
   warnings).
+- Cloud Run revision `anu-tailoring-git-00032-r9t` supplied the definitive startup
+  traceback: the target database did not contain `alembic_version`; Uvicorn started,
+  but application lifespan correctly stopped before accepting traffic.
+- Added a production entrypoint fallback that takes a read-only fast path for current
+  schemas and otherwise serializes `alembic upgrade head` with a PostgreSQL advisory
+  lock. It rechecks after waiting, verifies the resulting migration head, and execs
+  Uvicorn only after success, allowing generated Git triggers to recover safely while
+  preserving the explicit Cloud Run migration job as the preferred deployment gate.
+- Updated the disposable PostgreSQL migration verifier to exercise that production
+  entrypoint from a completely empty database instead of invoking Alembic directly.
+- Verification passed for both startup branches: the configured current database
+  took the no-migration fast path, while a uniquely named empty PostgreSQL database
+  was upgraded through all four revisions to `20260902_0004` with 31 tables and then
+  removed. Python compilation, Alembic model-drift, and `git diff --check` also pass.

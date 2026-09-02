@@ -356,6 +356,16 @@ job. Do not remove the migration job's Secret Manager mappings, Cloud SQL
 attachment, or runtime service account: subsequent builds preserve them and
 only update its image.
 
+The production container also performs a fast migration-head check before
+starting Uvicorn. This is a safety net for Cloud Run repository triggers that
+still use Google's generated build instead of `cloudbuild.yaml`. When the schema
+is behind (including a legacy database without `alembic_version`), the entrypoint
+uses a PostgreSQL advisory lock, rechecks after acquiring it, applies `alembic
+upgrade head`, verifies the resulting head, and only then starts the server on
+Cloud Run's `PORT`. Current schemas take the read-only fast path. Keep the
+dedicated migration job as the preferred deployment gate; the guarded entrypoint
+prevents a skipped gate from producing another port-8080 startup failure.
+
 ### Razorpay production activation
 
 The checkout, signature verification, payment ledger, refunds, and vendor

@@ -1,4 +1,4 @@
-"""Build the complete Alembic chain in a disposable PostgreSQL database."""
+"""Exercise production startup migrations in a disposable PostgreSQL database."""
 
 from __future__ import annotations
 
@@ -76,7 +76,12 @@ def main() -> None:
     try:
         environment = {**os.environ, "DATABASE_URL": database_url(database_name)}
         subprocess.run(
-            [sys.executable, "-m", "alembic", "upgrade", "head"],
+            [
+                sys.executable,
+                "-m",
+                "app.production_startup",
+                "--migrate-only",
+            ],
             check=True,
             env=environment,
         )

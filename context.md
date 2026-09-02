@@ -103,6 +103,10 @@ And update conetxt.md on the technical stack & architectural guidelines
   `anu-tailoring-git-migrate` job with the commit image before updating the service.
   A failed migration therefore blocks deployment instead of surfacing as a port-8080
   startup failure.
+- The production image has a guarded fallback entrypoint for generated repository
+  triggers that bypass `cloudbuild.yaml`: it checks the Alembic head, serializes a
+  required upgrade with a PostgreSQL advisory lock, verifies the result, and then
+  replaces itself with Uvicorn. Current schemas remain a read-only fast path.
 - Product inventory follows its selling unit: `piece` stock is a non-negative whole
   number, while `metre` stock may be decimal. This invariant is enforced in Pydantic
   create/update contracts and mirrored by web/native input validation; price remains
