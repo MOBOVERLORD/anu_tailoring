@@ -571,7 +571,7 @@ class ProductCreate(BaseModel):
     garment_type: Optional[str] = Field(default=None, max_length=50)
     price: Decimal = Field(gt=0, le=1_000_000, decimal_places=2)
     unit: str = "piece"
-    stock_quantity: Decimal = Field(gt=0, le=1_000_000, decimal_places=2)
+    stock_quantity: Decimal = Field(ge=0, le=1_000_000)
     sizes: List[str] = Field(default_factory=list, max_length=20)
     colors: List[str] = Field(default_factory=list, max_length=20)
 
@@ -627,6 +627,11 @@ class ProductCreate(BaseModel):
             raise ValueError("Ready-made clothing must be sold by piece")
         if self.product_type == "fabric" and self.unit != "metre":
             raise ValueError("Fabric must be sold by metre")
+        if (
+            self.unit == "piece"
+            and self.stock_quantity != self.stock_quantity.to_integral_value()
+        ):
+            raise ValueError("Available stock for pieces must be a whole number")
         return self
 
 

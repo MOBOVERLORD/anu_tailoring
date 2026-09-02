@@ -6,6 +6,10 @@ Status: Features 1 (Studio navigation redesign) and 2 (secure vendor-customer
 relationship backend) are complete. Features 3–10 remain pending and must
 continue one feature at a time.
 
+Maintenance note: the whole-piece product stock validation issue was resolved on
+2 September 2026 across FastAPI, desktop/mobile-width web, and the native create
+form. It no longer blocks Feature 3.
+
 The Codex task cannot read the account-level usage meter. The user reported that
 the current meter shows 35%, so this work was intentionally recorded for the next
 session instead of being started today.

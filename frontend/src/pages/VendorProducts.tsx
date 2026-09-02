@@ -18,6 +18,12 @@ const PRODUCT_TYPES = [{ value: "ready_made", label: "Ready-made clothing" }, { 
 const CUSTOMER_CATEGORIES = [{ value: "women", label: "Women" }, { value: "men", label: "Men" }, { value: "unisex", label: "Unisex" }, { value: "kids", label: "Kids" }]
 const PRODUCT_STATUSES = [{ value: "all", label: "All statuses" }, ...Object.entries(labels).map(([value, label]) => ({ value, label }))]
 
+const stockValidationMessage = (unit: ProductInput["unit"], value: number) => {
+  if (!Number.isFinite(value) || value < 0) return "Enter an available stock quantity of zero or more."
+  if (unit === "piece" && !Number.isInteger(value)) return "Available stock for pieces must be a whole number."
+  return null
+}
+
 const VendorProducts = () => {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
@@ -82,6 +88,12 @@ const VendorProducts = () => {
   const save = async (event: React.FormEvent) => {
     event.preventDefault()
     const shouldSubmit = ((event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.value === "submit"
+    const stockQuantity = Number(form.stock_quantity)
+    const stockError = stockValidationMessage(form.unit, stockQuantity)
+    if (stockError) {
+      toast.error(stockError)
+      return
+    }
     if ((editing?.images.length || 0) + formImages.length === 0) {
       toast.error("Add at least one product image before saving")
       return
@@ -89,7 +101,7 @@ const VendorProducts = () => {
     setSaving(true)
     let savedProduct: Product | null = null
     try {
-      const payload = { ...form, colors: [], garment_type: form.garment_type || null, unit: form.product_type === "fabric" ? "metre" : "piece", price: Number(form.price), stock_quantity: Number(form.stock_quantity) }
+      const payload = { ...form, colors: [], garment_type: form.garment_type || null, unit: form.product_type === "fabric" ? "metre" : "piece", price: Number(form.price), stock_quantity: stockQuantity }
       const saved = await api<Product>(editing ? `/api/vendor/products/${editing.id}` : "/api/vendor/products", { method: editing ? "PUT" : "POST", body: JSON.stringify(payload) })
       savedProduct = saved
       for (const [index, file] of formImages.entries()) {
@@ -179,7 +191,7 @@ const VendorProducts = () => {
                   <header><span><CircleDollarSign size={18} /></span><div><h3>Pricing and stock</h3><p>Customers see this price before delivery is calculated.</p></div></header>
                   <div className="product-form-grid">
                     <div className="field input-with-prefix"><label htmlFor="shop-price">Price per {form.unit} <b>*</b></label><span>₹</span><input id="shop-price" max={1_000_000} min="0.01" onChange={(event) => setForm({ ...form, price: boundedNumber(event.target.value, 0, 1_000_000) })} required step="0.01" type="number" value={form.price} /></div>
-                    <div className="field"><label htmlFor="shop-stock">Available stock ({form.unit}) <b>*</b></label><input id="shop-stock" max={1_000_000} min="0.01" onChange={(event) => setForm({ ...form, stock_quantity: boundedNumber(event.target.value, 0, 1_000_000) })} required step={form.unit === "piece" ? 1 : 0.1} type="number" value={form.stock_quantity} /></div>
+                    <div className="field"><label htmlFor="shop-stock">Available stock ({form.unit}) <b>*</b></label><input id="shop-stock" max={1_000_000} min={0} onChange={(event) => setForm({ ...form, stock_quantity: boundedNumber(event.target.value, 0, 1_000_000) })} onInvalid={(event) => { event.preventDefault(); toast.error(stockValidationMessage(form.unit, event.currentTarget.valueAsNumber) || "Enter a valid available stock quantity.") }} required step={form.unit === "piece" ? 1 : 0.1} type="number" value={form.stock_quantity} /><small>{form.unit === "piece" ? "Use whole pieces: 0, 1, 2, and so on." : "Enter the available fabric length in metres."}</small></div>
                   </div>
                 </section>
               </div>

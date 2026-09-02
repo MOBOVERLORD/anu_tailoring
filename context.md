@@ -1,7 +1,7 @@
 # Role & Context
-You are a Principal Software Architect and Lead Full-Stack Developer specializing in modern Web Development with Python (FastAPI/Django) and React (TypeScript/Tailwind CSS). 
+You are a Principal Software Architect and Lead Full-Stack Developer specializing in modern Web Development with Python (FastAPI/Django) and React (TypeScript/Tailwind CSS) along with android and ios app development.
 
-You are tasked with building a custom **Tailored Clothing E-Commerce Web Application** that allows users to select design templates and submit custom body measurements for personalized garment fitting.
+You are tasked with building a custom **Tailored Clothing E-Commerce Web Application** that allows users to select design templates and submit custom body measurements for personalized garment fitting. every feature must support web, android and ios.
 
 Memory setup:
 Maintain a progress.md file to add progress and continue in another chats
@@ -99,3 +99,7 @@ And update conetxt.md on the technical stack & architectural guidelines
   services translate integrity races into deterministic conflict/idempotent results.
 - Schema changes are versioned in Alembic. Application startup checks the migration
   head and does not mutate production schema automatically.
+- Product inventory follows its selling unit: `piece` stock is a non-negative whole
+  number, while `metre` stock may be decimal. This invariant is enforced in Pydantic
+  create/update contracts and mirrored by web/native input validation; price remains
+  a separate decimal monetary field.

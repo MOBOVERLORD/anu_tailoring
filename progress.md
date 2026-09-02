@@ -7,6 +7,26 @@ Last updated: 2026-09-02
 The multi-vendor marketplace now covers design publishing plus the first
 customer/vendor order-invoice workflow across React, FastAPI, and PostgreSQL.
 
+### Whole-piece product stock validation (2026-09-02)
+
+- Fixed the web vendor product form's misaligned `min="0.01"` and `step="1"`
+  constraints. Piece stock now uses an aligned non-negative integer contract:
+  `min="0"`, `step="1"`.
+- Added explicit web form validation and an in-app error explaining that piece
+  stock must be a whole number. Both zero-stock drafts and positive whole-piece
+  inventory are accepted; fractional pieces are rejected before an API call.
+- Updated FastAPI/Pydantic create and update contracts to accept non-negative
+  stock, reject fractional `piece` quantities, and continue accepting decimal
+  `metre` quantities. Monetary price precision remains independently validated.
+- Updated the native ready-made product form to use a number keyboard, strip
+  non-digits, allow zero stock, and report an explicit whole-piece error.
+- Extended `scripts/verify_product_shop.py` with create/update assertions for
+  stock values `0`, `1`, and `1.5`, plus decimal fabric inventory.
+- Verification passed: backend compile and product regression, frontend lint and
+  production build, native TypeScript/Expo configuration check, and interactive
+  browser checks at 1440×900 and 390×844 for create/edit dialogs. Both responsive
+  layouts had no horizontal overflow and displayed the corrected stock guidance.
+
 ### Secure vendor-customer relationships (2026-09-02)
 
 - Added `vendor_customer_relationships` as a relationship between existing user
