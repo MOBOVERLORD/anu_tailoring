@@ -35,6 +35,13 @@ class UserRole(str, enum.Enum):
     DELIVERY_AGENT = "delivery_agent"
 
 
+class VendorCustomerStatus(str, enum.Enum):
+    INVITED = "invited"
+    PENDING_ACCEPTANCE = "pending_acceptance"
+    ACTIVE = "active"
+    DECLINED = "declined"
+
+
 class DesignStatus(str, enum.Enum):
     DRAFT = "draft"
     SUBMITTED = "submitted"
@@ -164,6 +171,20 @@ class User(Base):
     password_reset_tokens: Mapped[List["PasswordResetToken"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    vendor_customer_relationships: Mapped[
+        List["VendorCustomerRelationship"]
+    ] = relationship(
+        back_populates="vendor",
+        foreign_keys="VendorCustomerRelationship.vendor_id",
+        cascade="all, delete-orphan",
+    )
+    customer_vendor_relationships: Mapped[
+        List["VendorCustomerRelationship"]
+    ] = relationship(
+        back_populates="customer",
+        foreign_keys="VendorCustomerRelationship.customer_user_id",
+        cascade="all, delete-orphan",
+    )
 
 
 class AuthSession(Base):
@@ -213,6 +234,91 @@ class PasswordResetToken(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     user: Mapped["User"] = relationship(back_populates="password_reset_tokens")
+
+
+class VendorCustomerRelationship(Base):
+    __tablename__ = "vendor_customer_relationships"
+    __table_args__ = (
+        UniqueConstraint(
+            "vendor_id",
+            "customer_user_id",
+            name="uq_vendor_customer_relationship",
+        ),
+        UniqueConstraint(
+            "invitation_token_id",
+            name="uq_vendor_customer_invitation_token",
+        ),
+        CheckConstraint(
+            "vendor_id <> customer_user_id",
+            name="ck_vendor_customer_not_self",
+        ),
+        CheckConstraint(
+            "status IN ('invited', 'pending_acceptance', 'active', 'declined')",
+            name="ck_vendor_customer_status",
+        ),
+        Index(
+            "ix_vendor_customer_relationships_vendor_status_updated",
+            "vendor_id",
+            "status",
+            "updated_at",
+        ),
+        Index(
+            "ix_vendor_customer_relationships_customer_status",
+            "customer_user_id",
+            "status",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    vendor_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE")
+    )
+    customer_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE")
+    )
+    status: Mapped[str] = mapped_column(
+        String(30),
+        default=VendorCustomerStatus.PENDING_ACCEPTANCE.value,
+        server_default=VendorCustomerStatus.PENDING_ACCEPTANCE.value,
+    )
+    vendor_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    invitation_token_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("password_reset_tokens.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    invited_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    accepted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    declined_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_by_user_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+    )
+
+    vendor: Mapped["User"] = relationship(
+        back_populates="vendor_customer_relationships",
+        foreign_keys=[vendor_id],
+    )
+    customer: Mapped["User"] = relationship(
+        back_populates="customer_vendor_relationships",
+        foreign_keys=[customer_user_id],
+    )
+    created_by: Mapped[Optional["User"]] = relationship(
+        foreign_keys=[created_by_user_id]
+    )
+    invitation_token: Mapped[Optional["PasswordResetToken"]] = relationship(
+        foreign_keys=[invitation_token_id]
+    )
 
 
 class MeasurementProfile(Base):

@@ -1,5 +1,9 @@
 # Issues
 
+Vendor-customer Feature 2 verification on 2 September 2026 found no new open
+issues. The existing product-stock issue below remains queued and was not changed
+as part of the isolated relationship backend work.
+
 ## Product stock rejects valid whole-piece quantities
 
 Status: Open

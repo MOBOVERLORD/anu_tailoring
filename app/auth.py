@@ -15,7 +15,14 @@ from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
-from app.models import AuthSession, PasswordResetToken, User, UserRole
+from app.models import (
+    AuthSession,
+    PasswordResetToken,
+    User,
+    UserRole,
+    VendorCustomerRelationship,
+    VendorCustomerStatus,
+)
 from app.schemas import (
     PasswordResetConfirm,
     PasswordResetRequest,
@@ -508,6 +515,19 @@ async def confirm_password_reset(
             detail="This password reset link is invalid or has expired",
         )
     user.hashed_password = hash_password(payload.new_password)
+    invited_relationship = await db.scalar(
+        select(VendorCustomerRelationship)
+        .where(
+            VendorCustomerRelationship.invitation_token_id == reset_token.id,
+            VendorCustomerRelationship.customer_user_id == user.id,
+            VendorCustomerRelationship.status == VendorCustomerStatus.INVITED.value,
+        )
+        .with_for_update()
+    )
+    if invited_relationship:
+        invited_relationship.status = VendorCustomerStatus.ACTIVE.value
+        invited_relationship.accepted_at = now
+        invited_relationship.declined_at = None
     await db.execute(
         update(PasswordResetToken)
         .where(
@@ -527,7 +547,13 @@ async def confirm_password_reset(
             str(user.email),
             user.full_name,
         )
-    return {"message": "Password updated. Sign in with your new password."}
+    return {
+        "message": (
+            "Account set up and vendor relationship accepted. Sign in with your new password."
+            if invited_relationship
+            else "Password updated. Sign in with your new password."
+        )
+    }
 
 
 @router.post("/login", response_model=Token)

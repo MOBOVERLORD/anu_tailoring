@@ -1,9 +1,10 @@
 # Continuation plan: Vendor Studio, customers, measurements, and invoices
 
-Last updated: 29 August 2026
+Last updated: 2 September 2026
 
-Status: Feature 1 (Studio navigation redesign) completed on 29 August 2026.
-Features 2–10 remain pending and must continue one feature at a time.
+Status: Features 1 (Studio navigation redesign) and 2 (secure vendor-customer
+relationship backend) are complete. Features 3–10 remain pending and must
+continue one feature at a time.
 
 The Codex task cannot read the account-level usage meter. The user reported that
 the current meter shows 35%, so this work was intentionally recorded for the next
@@ -58,6 +59,13 @@ description, badge, and chevron. Preserve the warm editorial visual language,
 light/dark themes, touch targets, and mobile safe-area behavior.
 
 ## 2. Vendor customer model
+
+**Completed on 2 September 2026.** The versioned Alembic model, exact-match
+linking, secure new-customer invitation, consent state, vendor-scoped list/detail
+and notes APIs, customer accept/decline actions, one-time password setup, and
+rollback-only regression coverage are implemented. Existing vendor accounts can
+be linked as customers without role mutation. Cross-vendor reads are hidden and
+database constraints guard self-links and concurrent duplicates.
 
 A vendor's customer is a relationship, not an account role. Therefore an existing
 user whose account role is `vendor` can still be added as another vendor's customer.
@@ -300,9 +308,9 @@ stored preference:
 
 ## Resume prompt
 
-“Continue from `continue.md` one feature at a time. Feature 1 is complete; implement
-only Feature 2, the secure vendor-customer relationship and add/link/invite backend,
-next. Preserve light/dark themes, private data ownership, versioned Alembic
-migrations, server-side authorization, and update `progress.md` plus `issues.md`
-after verification. Keep Feature 10 (persistent mobile session and theme preference)
-queued as its own isolated reliability feature.”
+“Continue from `continue.md` one feature at a time. Features 1 and 2 are complete;
+implement only Feature 3, the native vendor Customers directory and customer detail
+overview UI, next. Use the existing `/api/vendor/customers` relationship APIs,
+preserve light/dark themes and server-side ownership, and update `progress.md` plus
+`issues.md` after verification. Keep measurements, invoices, web parity, and Feature
+10 (persistent mobile session and theme preference) queued as separate features.”

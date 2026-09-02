@@ -3,6 +3,11 @@ You are a Principal Software Architect and Lead Full-Stack Developer specializin
 
 You are tasked with building a custom **Tailored Clothing E-Commerce Web Application** that allows users to select design templates and submit custom body measurements for personalized garment fitting.
 
+Memory setup:
+Maintain a progress.md file to add progress and continue in another chats
+Always check for issues.md & continue.md to resume where you left once things are done move the changes to progress and update these two files
+And update conetxt.md on the technical stack & architectural guidelines
+
 ---
 
 ## Technical Stack & Architectural Guidelines
@@ -74,3 +79,23 @@ You are tasked with building a custom **Tailored Clothing E-Commerce Web Applica
 3. **Frontend Architecture:** Outline the React folder structure (`components/`, `hooks/`, `services/`, `context/`, `types/`).
 4. **Theme Context:** Provide a clean React TypeScript implementation for the Reactive Light/Dark mode switcher.
 5. **Key Component Code:** Deliver complete, typed TypeScript code snippets for the Home Page Design Grid, Measurement Profile Manager, and Order Flow.
+
+---
+
+## Current Vendor-Customer Architecture (2026-09-02)
+
+- Vendor customers are represented by `vendor_customer_relationships`; account
+  identity and role remain in `users`, so vendor-role users can also be customers.
+- Relationship status is consent-aware: `invited`, `pending_acceptance`, `active`,
+  or `declined`. Vendor-private notes are never part of the customer response.
+- Vendor endpoints are rooted at `/api/vendor/customers` and always scope reads and
+  writes by the authenticated vendor ID. Customer consent endpoints are rooted at
+  `/api/customer/vendor-relationships` and scope by the authenticated customer ID.
+- New-customer invitations reuse hashed, expiring `password_reset_tokens`; the raw
+  token is sent only by transactional email. Successful password setup atomically
+  activates the related invitation.
+- PostgreSQL remains the concurrency authority through unique lower-case email,
+  normalized phone, vendor/customer pair, and invitation-token constraints. API
+  services translate integrity races into deterministic conflict/idempotent results.
+- Schema changes are versioned in Alembic. Application startup checks the migration
+  head and does not mutate production schema automatically.

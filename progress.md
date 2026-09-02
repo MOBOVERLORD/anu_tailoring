@@ -1,11 +1,45 @@
 # Vastrivo — Progress
 
-Last updated: 2026-08-08
+Last updated: 2026-09-02
 
 ## Current milestone
 
 The multi-vendor marketplace now covers design publishing plus the first
 customer/vendor order-invoice workflow across React, FastAPI, and PostgreSQL.
+
+### Secure vendor-customer relationships (2026-09-02)
+
+- Added `vendor_customer_relationships` as a relationship between existing user
+  identities rather than a new account role. A vendor account can therefore be
+  another vendor's customer without changing either account's role.
+- Added Alembic revision `20260902_0004` with vendor/customer foreign keys,
+  unique vendor-customer and invitation-token constraints, a database self-link
+  check, constrained relationship statuses, audit/provenance fields, private
+  vendor notes, consent timestamps, and vendor/customer query indexes.
+- Added vendor-scoped, paginated relationship APIs under `/api/vendor/customers`:
+  list/search/filter, exact-identity link, new-customer invitation, detail, and
+  private-note update. Cross-vendor identifiers return 404 rather than exposing
+  another vendor's relationship.
+- Exact link requires the normalized email and phone to resolve to the same
+  active customer or vendor account. Mismatched identities, self-links,
+  administrative/delivery roles, and duplicate relationships are rejected.
+- New invitations create only a customer-role account with an unusable random
+  password plus a hashed, expiring, one-time setup token. The usable token is
+  sent through the existing transactional email service and is never stored or
+  returned by the API.
+- Completing invitation password setup atomically activates the relationship.
+  Existing accounts remain `pending_acceptance` until the related account calls
+  the authenticated accept action; customers can also decline a pending link.
+- Concurrent duplicate link/invite writes are guarded by PostgreSQL uniqueness
+  constraints and recover idempotently by returning the relationship created by
+  the winning transaction.
+- Added `scripts/verify_vendor_customers.py`, a rollback-only regression covering
+  API contracts, normalized exact identity, customer-role and vendor-role links,
+  mismatches, self/admin rejection, duplicate creation, invitation setup,
+  role preservation, private-note updates, pagination, and cross-vendor denial.
+- Verification passed: live upgrade to `20260902_0004`, clean `alembic check`,
+  fresh 31-table migration chain, Python compile, vendor-customer regression,
+  authentication regression, and vendor-directory/OpenAPI regression.
 
 ### Distance-based delivery management (2026-08-02)
 

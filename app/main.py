@@ -28,6 +28,7 @@ from app import (
     payments,
     products,
     vendors,
+    vendor_customers,
     vendor_designs,
 )
 
@@ -147,6 +148,8 @@ app.include_router(deliveries.admin_router)
 app.include_router(deliveries.agent_router)
 app.include_router(vendor_designs.router)
 app.include_router(vendors.router)
+app.include_router(vendor_customers.router)
+app.include_router(vendor_customers.customer_router)
 app.include_router(admin.router)
 app.include_router(notifications.router)
 app.include_router(media.router)

@@ -347,6 +347,86 @@ class MeasurementProfileResponse(MeasurementProfileCreate):
         from_attributes = True
 
 
+class VendorCustomerIdentity(BaseModel):
+    email: EmailStr
+    phone: str = Field(min_length=10, max_length=20)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_customer_email(cls, value: EmailStr) -> str:
+        return str(value).strip().lower()
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_customer_phone(cls, value: str) -> str:
+        return normalize_phone_number(value)
+
+
+class VendorCustomerLinkCreate(VendorCustomerIdentity):
+    vendor_notes: Optional[str] = Field(default=None, max_length=2000)
+
+    @field_validator("vendor_notes")
+    @classmethod
+    def normalize_link_notes(cls, value: Optional[str]) -> Optional[str]:
+        normalized = " ".join(value.split()) if value else None
+        return normalized or None
+
+
+class VendorCustomerInviteCreate(VendorCustomerLinkCreate):
+    full_name: str = Field(min_length=2, max_length=100)
+
+    @field_validator("full_name")
+    @classmethod
+    def normalize_invited_name(cls, value: str) -> str:
+        return " ".join(value.split())
+
+
+class VendorCustomerNotesUpdate(BaseModel):
+    vendor_notes: Optional[str] = Field(default=None, max_length=2000)
+
+    @field_validator("vendor_notes")
+    @classmethod
+    def normalize_customer_notes(cls, value: Optional[str]) -> Optional[str]:
+        normalized = " ".join(value.split()) if value else None
+        return normalized or None
+
+
+class VendorCustomerRelationshipResponse(BaseModel):
+    id: int
+    vendor_id: int
+    customer_user_id: int
+    full_name: str
+    email: EmailStr
+    phone: Optional[str] = None
+    account_role: str
+    status: Literal["invited", "pending_acceptance", "active", "declined"]
+    vendor_notes: Optional[str] = None
+    invited_at: Optional[datetime] = None
+    accepted_at: Optional[datetime] = None
+    declined_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class VendorCustomerRelationshipPage(BaseModel):
+    items: List[VendorCustomerRelationshipResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class CustomerVendorRelationshipResponse(BaseModel):
+    id: int
+    vendor_id: int
+    vendor_name: str
+    shop_name: Optional[str] = None
+    status: Literal["invited", "pending_acceptance", "active", "declined"]
+    invited_at: Optional[datetime] = None
+    accepted_at: Optional[datetime] = None
+    declined_at: Optional[datetime] = None
+    created_at: datetime
+
+
 class MeasurementFieldDefinition(BaseModel):
     key: str = Field(min_length=1, max_length=50, pattern=r"^[a-z][a-z0-9_]*$")
     label: str = Field(min_length=1, max_length=100)

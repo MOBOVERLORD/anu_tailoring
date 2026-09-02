@@ -50,6 +50,7 @@ async def verify_schema(database_name: str) -> tuple[int, str]:
                 "products",
                 "orders",
                 "deliveries",
+                "vendor_customer_relationships",
                 "alembic_version",
             }
             missing = required - tables

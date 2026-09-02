@@ -155,6 +155,32 @@ async def send_welcome_email(recipient: str, full_name: str) -> None:
     )
 
 
+async def send_vendor_customer_invitation_email(
+    recipient: str,
+    full_name: str,
+    vendor_name: str,
+    token: str,
+) -> None:
+    setup_link = _absolute_app_link(f"/reset-password?token={quote(token, safe='')}")
+    if not setup_link:
+        logger.error("PUBLIC_APP_URL is not configured for customer invitation email")
+        return
+    title = f"{vendor_name} invited you to {settings.APP_NAME}"
+    message = (
+        f"Hi {full_name}, {vendor_name} added you as a tailoring customer. "
+        f"Use this one-time link within {settings.PASSWORD_RESET_EXPIRE_MINUTES} "
+        "minutes to choose your password and accept the relationship. "
+        "If you do not recognize this vendor, ignore this email."
+    )
+    text_body = f"{message}\n\nChoose password: {setup_link}"
+    await send_email_safely(
+        recipient,
+        f"Set up your {settings.APP_NAME} customer account",
+        text_body,
+        _message_html(title, message, setup_link),
+    )
+
+
 async def send_password_changed_email(recipient: str, full_name: str) -> None:
     message = (
         f"Hi {full_name}, the password for your account was changed. "
