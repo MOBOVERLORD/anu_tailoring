@@ -1,0 +1,68 @@
+# Continuous delivery for the Git-connected Cloud Run service.
+#
+# The migration job is bootstrapped once by scripts/deploy-gcp.mjs and retains
+# its DATABASE_URL/SECRET_KEY secrets, Cloud SQL attachment, and service account.
+# Each build only changes the job image before executing it. The service is not
+# updated unless the migration finishes successfully.
+substitutions:
+  _REGION: asia-south1
+  _SERVICE: anu-tailoring-git
+  _MIGRATION_JOB: anu-tailoring-git-migrate
+  _AR_REPOSITORY: cloud-run-source-deploy
+
+steps:
+  - id: Build application image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --tag
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/${_SERVICE}:$COMMIT_SHA
+      - .
+
+  - id: Push application image
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/${_SERVICE}:$COMMIT_SHA
+
+  - id: Select migration image
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - update
+      - ${_MIGRATION_JOB}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/${_SERVICE}:$COMMIT_SHA
+      - --region=${_REGION}
+      - --project=$PROJECT_ID
+      - --quiet
+
+  - id: Apply database migrations
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - execute
+      - ${_MIGRATION_JOB}
+      - --region=${_REGION}
+      - --project=$PROJECT_ID
+      - --wait
+      - --quiet
+
+  - id: Deploy Cloud Run service
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - services
+      - update
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/${_SERVICE}:$COMMIT_SHA
+      - --region=${_REGION}
+      - --project=$PROJECT_ID
+      - --quiet
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/${_SERVICE}:$COMMIT_SHA

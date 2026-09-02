@@ -1258,3 +1258,19 @@ standalone invoice, private PDF, native, and web work requested on 29 August 202
 “Continue from `continue.md`, then use `progress.md` for completed-project context.
 Preserve the current warm editorial UI and both themes, and update both tracking
 files when the milestone is done.”
+
+## Migration-safe Git deployment
+
+- Diagnosed the Cloud Run revision failure after Feature 2 as a deployment-order
+  gap: the Git-connected trigger updated `anu-tailoring-git` without running the
+  new Alembic head first, while application startup correctly refuses an outdated
+  production schema before binding to port 8080.
+- Added `cloudbuild.yaml` to build and push one commit image, update and execute
+  `anu-tailoring-git-migrate` with that image, wait for migration success, and only
+  then update the service.
+- Documented the one-time migration-job bootstrap and the Cloud Build trigger switch
+  required for repository-controlled continuous deployment.
+- Verified the Cloud Build YAML and enforced step order locally, confirmed Alembic
+  reports no model drift, compiled the Python application/scripts, and passed the
+  frontend production build and lint (with only the three pre-existing Fast Refresh
+  warnings).

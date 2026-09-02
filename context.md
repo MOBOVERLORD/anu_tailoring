@@ -99,6 +99,10 @@ And update conetxt.md on the technical stack & architectural guidelines
   services translate integrity races into deterministic conflict/idempotent results.
 - Schema changes are versioned in Alembic. Application startup checks the migration
   head and does not mutate production schema automatically.
+- Git-triggered Cloud Run delivery uses `cloudbuild.yaml` to update and execute the
+  `anu-tailoring-git-migrate` job with the commit image before updating the service.
+  A failed migration therefore blocks deployment instead of surfacing as a port-8080
+  startup failure.
 - Product inventory follows its selling unit: `piece` stock is a non-negative whole
   number, while `metre` stock may be decimal. This invariant is enforced in Pydantic
   create/update contracts and mirrored by web/native input validation; price remains

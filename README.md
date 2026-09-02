@@ -318,6 +318,44 @@ npm.cmd run deploy:gcp
 
 Use `.\deploy-gcp.cmd --help` to see the supported environment variables.
 
+### Git-triggered continuous deployment
+
+The default Cloud Run **Connect repository** trigger builds and updates the
+service directly. It does not know that this application requires an Alembic
+migration before FastAPI starts. After a revision adds a migration, deploying
+with that generated trigger makes startup fail before the container can bind to
+`PORT=8080`.
+
+The repository-level [`cloudbuild.yaml`](cloudbuild.yaml) fixes that ordering for
+the Git-connected `anu-tailoring-git` service:
+
+1. Build and push one immutable commit image.
+2. Update `anu-tailoring-git-migrate` to that same image.
+3. Execute the migration job and wait for success.
+4. Update `anu-tailoring-git` only after the migration completes.
+
+Bootstrap the migration job once with the normal deployment command, using the
+Git-connected service name and the production environment variables described
+above:
+
+```powershell
+$env:GCP_SERVICE="anu-tailoring-git"
+.\deploy-gcp.cmd
+```
+
+Then open **Cloud Run → anu-tailoring-git → Edit repo settings**, edit the Cloud
+Build trigger, select **Cloud Build configuration file (YAML or JSON)**, and set
+the location to `/cloudbuild.yaml`. The defaults assume region `asia-south1` and
+Artifact Registry repository `cloud-run-source-deploy`; override `_REGION`,
+`_SERVICE`, `_MIGRATION_JOB`, or `_AR_REPOSITORY` in the trigger when the actual
+resource names differ.
+
+The Cloud Build service account needs permission to push to that Artifact
+Registry repository and to update/execute the Cloud Run service and migration
+job. Do not remove the migration job's Secret Manager mappings, Cloud SQL
+attachment, or runtime service account: subsequent builds preserve them and
+only update its image.
+
 ### Razorpay production activation
 
 The checkout, signature verification, payment ledger, refunds, and vendor
