@@ -14,7 +14,7 @@ from app.measurement_catalog import default_category_rows
 from app.config import settings
 from app.auth import hash_password
 from app.email_service import deliver_pending_notification_emails
-from app.schema import ensure_database_is_current
+from app.production_startup import apply_pending_migrations
 from app import (
     addresses,
     admin,
@@ -34,7 +34,6 @@ from app import (
 
 
 async def init_db_and_seed_admin():
-    await ensure_database_is_current()
     async with AsyncSessionLocal() as db:
         await db.execute(
             delete(AuthSession).where(
@@ -82,6 +81,10 @@ async def init_db_and_seed_admin():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Cloud Run can retain a service-level command override that bypasses the
+    # image's Docker CMD. Keep the same guarded migration gate in application
+    # lifespan so even a direct `python -m uvicorn ...` launch is safe.
+    await apply_pending_migrations()
     await init_db_and_seed_admin()
     yield
     await engine.dispose()

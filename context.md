@@ -107,6 +107,9 @@ And update conetxt.md on the technical stack & architectural guidelines
   triggers that bypass `cloudbuild.yaml`: it checks the Alembic head, serializes a
   required upgrade with a PostgreSQL advisory lock, verifies the result, and then
   replaces itself with Uvicorn. Current schemas remain a read-only fast path.
+- FastAPI lifespan calls the same migration guard before data seeding. This covers
+  Cloud Run revisions with a retained service-level command override, since such an
+  override bypasses the image's Docker `CMD`.
 - Product inventory follows its selling unit: `piece` stock is a non-negative whole
   number, while `metre` stock may be decimal. This invariant is enforced in Pydantic
   create/update contracts and mirrored by web/native input validation; price remains

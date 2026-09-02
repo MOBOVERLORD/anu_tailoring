@@ -365,6 +365,11 @@ upgrade head`, verifies the resulting head, and only then starts the server on
 Cloud Run's `PORT`. Current schemas take the read-only fast path. Keep the
 dedicated migration job as the preferred deployment gate; the guarded entrypoint
 prevents a skipped gate from producing another port-8080 startup failure.
+FastAPI lifespan invokes the same guard before seeding data, because a retained
+Cloud Run container command/argument override takes precedence over the Docker
+`CMD`. The repository-owned deploy step explicitly resets the service command to
+`python -m app.production_startup`; generated triggers remain safe through the
+lifespan guard even when they preserve an older direct-Uvicorn override.
 
 ### Razorpay production activation
 

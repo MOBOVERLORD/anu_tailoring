@@ -1288,3 +1288,12 @@ files when the milestone is done.”
   took the no-migration fast path, while a uniquely named empty PostgreSQL database
   was upgraded through all four revisions to `20260902_0004` with 31 tables and then
   removed. Python compilation, Alembic model-drift, and `git diff --check` also pass.
+- Revision `anu-tailoring-git-00034-gpk` proved that Cloud Run retained a direct
+  Uvicorn command override: the process entered application lifespan without any of
+  the guarded Docker-entrypoint messages. Added the migration guard to FastAPI
+  lifespan so service-level command overrides cannot bypass it, and made the custom
+  Cloud Build deploy step explicitly select `python -m app.production_startup`.
+- Verified the direct-Uvicorn/FastAPI lifespan path with the product-shop regression:
+  it ran the schema guard before seeding and completed the API workflow. Python
+  compilation, Alembic model-drift, Cloud Build YAML command validation, and
+  `git diff --check` pass.
