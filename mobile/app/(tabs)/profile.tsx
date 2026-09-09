@@ -1,6 +1,6 @@
 import * as ImagePicker from "expo-image-picker"
 import { type ReactNode, useEffect, useState } from "react"
-import { Image, Modal, Pressable, StyleSheet, Text, View } from "react-native"
+import { Alert, Image, Modal, Pressable, StyleSheet, Text, View } from "react-native"
 import { Bell, Camera, ChevronRight, History, LogOut, MapPin, Menu, Moon, Pencil, Ruler, Store, UserRound, X } from "lucide-react-native"
 import { useRouter } from "expo-router"
 import { useSession } from "@/auth/SessionProvider"
@@ -11,7 +11,7 @@ import { useTheme } from "@/theme/theme"
 
 export default function ProfileScreen() {
   const router = useRouter()
-  const { colors, toggleTheme } = useTheme()
+  const { colors, preference, setPreference } = useTheme()
   const { profile, logout, reloadProfile } = useSession()
   const [name, setName] = useState(profile?.full_name || "")
   const [phone, setPhone] = useState(profile?.phone || "")
@@ -89,7 +89,12 @@ export default function ProfileScreen() {
           <MenuItem icon={<Bell color={colors.primary} size={20} />} label="Notifications" onPress={() => openRoute("/notifications")} />
           <MenuItem icon={<History color={colors.primary} size={20} />} label="Activity log" onPress={() => openRoute("/profile/activity")} />
           {profile?.role === "customer" && <MenuItem icon={<Store color={colors.primary} size={20} />} label={profile.vendor_request_status === "pending" ? "Vendor application" : "Become a vendor"} onPress={() => openRoute("/profile/become-vendor")} />}
-          <MenuItem icon={<Moon color={colors.primary} size={20} />} label="Change theme" onPress={() => { toggleTheme(); setMenuOpen(false) }} />
+          <MenuItem icon={<Moon color={colors.primary} size={20} />} label={`Theme: ${preference === "system" ? "Follow system" : preference}`} onPress={() => {
+            Alert.alert("Appearance", "Choose a theme for this device.", (["system", "light", "dark"] as const).map((value) => ({
+              text: value === "system" ? "Follow system" : value === "light" ? "Light" : "Dark",
+              onPress: () => { void setPreference(value).catch(() => Alert.alert("Theme not saved", "Please try again.")) },
+            })))
+          }} />
           <MenuItem danger icon={<LogOut color={colors.danger} size={20} />} label="Sign out" onPress={() => { setMenuOpen(false); void logout() }} />
         </Pressable>
       </Pressable>

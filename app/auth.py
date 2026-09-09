@@ -238,6 +238,7 @@ async def _start_auth_session(
             select(AuthSession.id)
             .where(
                 AuthSession.user_id == user.id,
+                AuthSession.client_type == "web",
                 AuthSession.revoked_at.is_(None),
                 AuthSession.expires_at > now,
             )
@@ -245,11 +246,11 @@ async def _start_auth_session(
             .offset(max(0, settings.MAX_ACTIVE_SESSIONS_PER_USER - 1))
         )
     ).scalars().all()
-    if sessions_to_remove:
+    if sessions_to_remove and client_type == "web":
         await db.execute(delete(AuthSession).where(AuthSession.id.in_(sessions_to_remove)))
 
     session_id = str(uuid4())
-    refresh_token = create_refresh_token(
+    refresh_token = f"m1.{session_id}.{secrets.token_urlsafe(32)}" if client_type == "mobile" else create_refresh_token(
         data={"sub": str(user.id), "sid": session_id, "jti": str(uuid4())}
     )
     db.add(
@@ -263,7 +264,7 @@ async def _start_auth_session(
             app_version=app_version,
             device_id_hash=_token_hash(device_id) if device_id else None,
             last_used_at=now,
-            expires_at=now + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES),
+            expires_at=None if client_type == "mobile" else now + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRE_MINUTES),
         )
     )
     await db.commit()
@@ -291,7 +292,7 @@ async def _rotate_refresh_session(
         .with_for_update()
     )
     now = datetime.now(timezone.utc)
-    if not session or session.revoked_at is not None or session.expires_at <= now:
+    if not session or session.revoked_at is not None or session.expires_at is None or session.expires_at <= now:
         raise HTTPException(status_code=401, detail="Refresh session is expired or closed")
     if session.client_type != expected_client_type:
         raise HTTPException(status_code=401, detail="Refresh session client is invalid")
@@ -324,6 +325,52 @@ async def _rotate_refresh_session(
     return access_token, new_refresh_token
 
 
+async def _rotate_mobile_session(refresh_token: str, db: AsyncSession, *, device_id: str, request_id: str | None) -> tuple[str, str]:
+    # Legacy, still-valid JWT credentials migrate on their next successful refresh.
+    if refresh_token.startswith("m1."):
+        parts = refresh_token.split(".")
+        if len(parts) != 3 or len(parts[1]) != 36:
+            raise HTTPException(status_code=401, detail="Invalid refresh credential")
+        session_id = parts[1]
+    else:
+        session_id = str(_decode_token(refresh_token, "refresh")["sid"])
+    session = await db.scalar(select(AuthSession).where(AuthSession.id == session_id).with_for_update())
+    now = datetime.now(timezone.utc)
+    if not session or session.client_type != "mobile" or session.revoked_at is not None or (session.expires_at is not None and session.expires_at <= now):
+        raise HTTPException(status_code=401, detail="Mobile session is closed")
+    presented = _token_hash(refresh_token)
+    current = hmac.compare_digest(session.refresh_token_hash, presented)
+    previous = bool(session.previous_refresh_hash and hmac.compare_digest(session.previous_refresh_hash, presented))
+    # An unknown secret must not let an attacker revoke a session by guessing its ID.
+    if not current and not previous:
+        raise HTTPException(status_code=401, detail="Invalid refresh credential")
+    user = await db.get(User, session.user_id)
+    if not user or not user.is_active or not session.device_id_hash or not hmac.compare_digest(session.device_id_hash, _token_hash(device_id)):
+        session.revoked_at = now
+        await db.commit()
+        raise HTTPException(status_code=401, detail="Mobile session is invalid")
+    request_hash = _token_hash(request_id) if request_id else None
+    if previous and (not request_hash or not session.refresh_request_hash or not hmac.compare_digest(request_hash, session.refresh_request_hash)):
+        session.revoked_at = now
+        await db.commit()
+        raise HTTPException(status_code=401, detail="Refresh token reuse detected; session closed")
+    # Reconstruct the same successor for an exact retry without storing plaintext.
+    nonce = request_id or secrets.token_urlsafe(32)
+    secret = hmac.new(settings.SECRET_KEY.encode(), f"mobile-refresh-v1|{refresh_token}|{nonce}".encode(), hashlib.sha256).hexdigest()
+    successor = f"m1.{session_id}.{secret}"
+    if previous:
+        if not hmac.compare_digest(_token_hash(successor), session.refresh_token_hash):
+            raise HTTPException(status_code=401, detail="Refresh recovery is no longer available")
+    else:
+        session.previous_refresh_hash = presented
+        session.refresh_request_hash = request_hash
+        session.refresh_token_hash = _token_hash(successor)
+        session.expires_at = None
+    session.last_used_at = now
+    await db.commit()
+    return create_access_token({"sub": str(user.id), "sid": session.id}), successor
+
+
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
@@ -347,7 +394,8 @@ async def get_current_user(
             User.id == user_id,
             AuthSession.id == session_id,
             AuthSession.revoked_at.is_(None),
-            AuthSession.expires_at > datetime.now(timezone.utc),
+            or_(AuthSession.expires_at > datetime.now(timezone.utc),
+                (AuthSession.client_type == "mobile") & AuthSession.expires_at.is_(None)),
         )
     )
     user = result.scalar_one_or_none()
@@ -622,7 +670,7 @@ async def mobile_login(
         "access_token": access_token,
         "refresh_token": refresh_token,
         "access_expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        "refresh_expires_in": settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
+        "refresh_expires_in": None,
     }
 
 
@@ -634,11 +682,11 @@ async def mobile_refresh(
     db: AsyncSession = Depends(get_db),
 ):
     _require_ui_request(x_requested_with)
-    access_token, refresh_token = await _rotate_refresh_session(
+    access_token, refresh_token = await _rotate_mobile_session(
         payload.refresh_token,
         db,
-        expected_client_type="mobile",
         device_id=payload.device_id,
+        request_id=payload.request_id,
     )
     response.headers["Cache-Control"] = "no-store"
     response.headers["Pragma"] = "no-cache"
@@ -646,7 +694,7 @@ async def mobile_refresh(
         "access_token": access_token,
         "refresh_token": refresh_token,
         "access_expires_in": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        "refresh_expires_in": settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
+        "refresh_expires_in": None,
     }
 
 

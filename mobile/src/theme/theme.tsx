@@ -1,4 +1,6 @@
-import { createContext, type PropsWithChildren, useContext, useMemo, useState } from "react"
+import { createContext, type PropsWithChildren, useContext, useEffect, useMemo, useState } from "react"
+import AsyncStorage from "@react-native-async-storage/async-storage"
+import { createThemeStorage, resolveTheme, type ThemePreference } from "./preference"
 import { useColorScheme } from "react-native"
 
 const light = {
@@ -34,20 +36,36 @@ export type AppColors = typeof light
 interface ThemeContextValue {
   colors: AppColors
   dark: boolean
-  toggleTheme: () => void
+  preference: ThemePreference
+  ready: boolean
+  setPreference: (preference: ThemePreference) => Promise<void>
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null)
+const storage = createThemeStorage(AsyncStorage)
 
 export const ThemeProvider = ({ children }: PropsWithChildren) => {
   const system = useColorScheme()
-  const [override, setOverride] = useState<"light" | "dark" | null>(null)
-  const isDark = (override ?? system) === "dark"
+  const [preference, updatePreference] = useState<ThemePreference>("system")
+  const [ready, setReady] = useState(false)
+  useEffect(() => {
+    let current = true
+    storage.load().then((value) => { if (current) updatePreference(value) })
+      .catch(() => { /* Use the system theme without overwriting an unreadable preference. */ })
+      .finally(() => { if (current) setReady(true) })
+    return () => { current = false }
+  }, [])
+  const isDark = resolveTheme(preference, system)
   const value = useMemo(() => ({
     colors: isDark ? dark : light,
     dark: isDark,
-    toggleTheme: () => setOverride((current) => (current ?? system) === "dark" ? "light" : "dark"),
-  }), [isDark, system])
+    preference,
+    ready,
+    setPreference: async (next: ThemePreference) => {
+      await storage.save(next)
+      updatePreference(next)
+    },
+  }), [isDark, preference, ready])
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>
 }
 

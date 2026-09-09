@@ -114,6 +114,7 @@ class MobileLogin(UserLogin):
 
 
 class MobileRefreshRequest(BaseModel):
+    request_id: Optional[str] = Field(default=None, min_length=32, max_length=128)
     refresh_token: str = Field(min_length=20, max_length=1024)
     device_id: str = Field(min_length=16, max_length=128)
 
@@ -121,7 +122,7 @@ class MobileRefreshRequest(BaseModel):
 class MobileToken(Token):
     refresh_token: str
     access_expires_in: int
-    refresh_expires_in: int
+    refresh_expires_in: Optional[int]
 
 
 class PasswordResetRequest(BaseModel):
@@ -778,6 +779,15 @@ class ResolvedLocationResponse(BrowserLocationRequest):
 
 # --- Order Schemas ---
 class OrderItemCreate(BaseModel):
+    colour_preference: Optional[str] = Field(default=None, max_length=100)
+    reference_design_ids: List[int] = Field(default_factory=list, max_length=5)
+    reference_photo_ids: List[str] = Field(default_factory=list, max_length=5)
+
+    @field_validator("colour_preference")
+    @classmethod
+    def clean_colour(cls, value):
+        return (" ".join(value.split()) or None) if value else None
+
     design_id: int
     measurement_profile_id: int
     cloth_source: str
@@ -1073,6 +1083,8 @@ class OrderItemResponse(BaseModel):
     id: int
     design: DesignResponse
     measurement_profile: MeasurementProfileResponse
+    colour_preference: Optional[str] = None
+    design_references: List[dict] = Field(default_factory=list)
     cloth_source: str
     fabric_choice: Optional[str]
     custom_instructions: Optional[str]

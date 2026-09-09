@@ -22,6 +22,7 @@ import {
 import toast from "react-hot-toast"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { Dialog } from "@/components/Dialog"
+import { CustomerMeasurements } from "@/components/CustomerMeasurements"
 import { ApiImage } from "@/components/ApiImage"
 import { LocationCapture } from "@/components/LocationCapture"
 import { AppSelect } from "@/components/ui/AppSelect"
@@ -1004,6 +1005,7 @@ const Profile = () => {
                   <button className="button button-primary" onClick={() => setMeasurementDialog("new")} type="button"><Plus size={17} /> Add your first profile</button>
                 </div>
               )}
+              <CustomerMeasurements />
             </>
           )}
 

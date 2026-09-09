@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, WebSocket, WebSocketDisconnect, status
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, with_loader_criteria
 
@@ -56,6 +56,7 @@ from app.schemas import (
     VendorInvoiceUpsert,
 )
 from app.config import settings
+from app.order_references import resolve_references
 from app.storage import (
     bucket_name,
     delete_objects,
@@ -286,6 +287,8 @@ def serialize_order_item(item: OrderItem, include_draft_invoice: bool = True) ->
         "measurement_profile": item.measurement_profile,
         "cloth_source": item.cloth_source,
         "fabric_choice": item.fabric_choice,
+        "colour_preference": item.colour_preference,
+        "design_references": item.design_references or [],
         "custom_instructions": item.custom_instructions,
         "measurement_snapshot": item.measurement_snapshot,
         "price": item.price,
@@ -563,6 +566,8 @@ async def create_order(
                 measurement_profile_id=profile.id,
                 cloth_source=item.cloth_source,
                 fabric_choice=item.fabric_choice,
+                colour_preference=item.colour_preference if item.cloth_source == "vendor_supplied" else None,
+                design_references=await resolve_references(item, design, current_user.id, db),
                 custom_instructions=item.custom_instructions,
                 price=item_price,
                 measurement_snapshot=snapshot_measurements(profile),
@@ -1928,7 +1933,8 @@ async def order_chat_socket(websocket: WebSocket, item_id: int):
                 AuthSession.id == session_id,
                 AuthSession.user_id == user_id,
                 AuthSession.revoked_at.is_(None),
-                AuthSession.expires_at > datetime.now(timezone.utc),
+                or_(AuthSession.expires_at > datetime.now(timezone.utc),
+                    (AuthSession.client_type == "mobile") & AuthSession.expires_at.is_(None)),
             )
         )
         identity = await _chat_access(item_id, user_id, db) if session_active else None
@@ -1988,7 +1994,8 @@ async def order_chat_socket(websocket: WebSocket, item_id: int):
                             AuthSession.id == session_id,
                             AuthSession.user_id == user_id,
                             AuthSession.revoked_at.is_(None),
-                            AuthSession.expires_at > datetime.now(timezone.utc),
+                            or_(AuthSession.expires_at > datetime.now(timezone.utc),
+                                (AuthSession.client_type == "mobile") & AuthSession.expires_at.is_(None)),
                         )
                     )
                 if not active:

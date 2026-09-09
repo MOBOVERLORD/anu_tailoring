@@ -5,6 +5,7 @@ import { api } from "@/lib/api"
 import type { MeasurementCategory, MeasurementProfile } from "@/types/api"
 import { AppButton, EmptyState, ErrorState, Field, LoadingState, PageHeader, Pill, Screen } from "@/components/ui"
 import { useTheme } from "@/theme/theme"
+import { CustomerMeasurements } from "@/components/CustomerMeasurements"
 
 export default function MeasurementsScreen() {
   const { colors } = useTheme()
@@ -60,6 +61,7 @@ export default function MeasurementsScreen() {
       <AppButton disabled={saving || profileName.trim().length < 2 || !category} onPress={() => void save()}>{saving ? "Saving…" : "Save measurements"}</AppButton>
     </View>}
     {!adding && (profiles.length ? profiles.map((profile) => <View key={profile.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}><View style={[styles.ruler, { backgroundColor: colors.primarySoft }]}><Ruler color={colors.primary} size={21} /></View><View style={{ flex: 1 }}><Text style={{ color: colors.text, fontFamily: "Fraunces_700Bold", fontSize: 19 }}>{profile.profile_name}</Text><Text style={{ color: colors.muted, fontFamily: "Manrope_500Medium", fontSize: 12, marginTop: 4 }}>{profile.garment_type.replaceAll("_", " ")} · {profile.unit}</Text><View style={styles.values}>{Object.entries(profile.measurements).slice(0, 4).map(([key, value]) => <Pill key={key}>{key.replaceAll("_", " ")} {value}</Pill>)}</View></View><Pressable accessibilityLabel="Delete measurement profile" onPress={() => remove(profile)}><Trash2 color={colors.danger} size={19} /></Pressable></View>) : <EmptyState message="Add a named fit profile to use while placing tailoring orders." title="No measurements yet" />)}
+    {!adding && <CustomerMeasurements shared />}
   </Screen>
 }
 

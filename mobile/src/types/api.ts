@@ -188,6 +188,8 @@ export interface OrderItem {
   design: Design
   invoice?: InvoiceSummary | null
   cloth_source: "customer_provided" | "vendor_supplied"
+  colour_preference?: string | null
+  design_references?: { design_id?: number; title?: string; photo_id?: string; url?: string }[]
   fabric_choice: string | null
   custom_instructions: string | null
   measurement_snapshot: { unit?: string; measurements?: Record<string, number> } | null
@@ -249,9 +251,35 @@ export interface PaginatedDeliveries {
   offset: number
 }
 
+export type VendorCustomerStatus = "invited" | "pending_acceptance" | "active" | "declined"
+
+export interface VendorCustomerRelationship {
+  id: number
+  vendor_id: number
+  customer_user_id: number
+  full_name: string
+  email: string
+  phone: string | null
+  account_role: UserRole
+  status: VendorCustomerStatus
+  vendor_notes: string | null
+  invited_at: string | null
+  accepted_at: string | null
+  declined_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface VendorCustomerRelationshipPage {
+  items: VendorCustomerRelationship[]
+  total: number
+  limit: number
+  offset: number
+}
+
 export interface MobileToken {
   access_token: string
   refresh_token: string
   access_expires_in: number
-  refresh_expires_in: number
+  refresh_expires_in: number | null
 }

@@ -11,6 +11,9 @@ export interface CartDesignLine {
   measurement_profile_id: number
   measurement_name: string
   cloth_source: "customer_provided" | "vendor_supplied"
+  colour_preference?: string | null
+  reference_design_ids?: number[]
+  reference_photo_ids?: string[]
   fabric_choice: string | null
   custom_instructions: string | null
 }

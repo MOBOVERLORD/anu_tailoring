@@ -1,6 +1,84 @@
 # Vastrivo — Progress
 
-Last updated: 2026-09-02
+Last updated: 2026-09-09
+
+## 9 September 2026 — Order colour and custom design references
+
+- Web/native order forms accept a typed colour preference when vendors supply cloth.
+  The backend normalizes/bounds it and stores it on each order item; cart/order
+  details show it to the customer and vendor.
+- Custom requests support up to five uploaded JPEG/PNG/WebP references and five
+  existing approved designs from the same vendor, as style references rather than
+  extra billable items. Measurement choice is explicit per request and snapshotted.
+- Reference photos use validated private uploads and UUID object keys. Only the
+  uploader or vendor receiving an order containing the reference may retrieve it.
+- Added native catalog-design ordering using the same fit/cloth form, and refresh
+  saved measurements when returning from profile setup.
+- Migration `20260909_0007` applied locally; model/compile checks, web build/lint,
+  and rollback-only order persistence/ownership regression pass. Native checks
+  pass; real upload and browser/device QA remain pending.
+- Unattached uploads are retained privately; automated abandoned-upload cleanup
+  is not implemented. Backend migration must precede deploying the new clients.
+
+## 9 September 2026 — Durable mobile sessions and refresh recovery
+
+- Migration `20260908_0006` adds nullable session expiry and hashed prior-token/
+  request metadata. New mobile credentials are opaque; browser JWT expiry and
+  rotation stay unchanged. Mobile sessions are not evicted by browser session caps.
+- Refresh is row-locked and device/account checked. Exact retries reconstruct the
+  latest successor without plaintext server storage; different-request reuse of
+  the previous credential revokes the session. Older/unknown credentials are
+  rejected without letting guessed session IDs revoke another user's session.
+- Native refresh persists request metadata in SecureStore before dispatch and
+  removes it after successor storage. A simulated process restart recovers a lost
+  response using the same request ID. Mobile access tokens remain memory-only.
+- Authenticated HTTP and order-chat checks accept durable mobile sessions.
+- Rollback-only regression covers durability, retry, replay, wrong device, logout,
+  inactive account, legacy migration and browser rotation. Fresh DB upgrade reached
+  32 tables at the new head; model drift and native checks pass.
+- Deploy backend/migration first, then rebuild/update native clients. Expired legacy
+  sessions need sign-in; migration downgrade revokes durable sessions. Device QA,
+  audit remediation and a future sign-out-all-devices UI remain outstanding.
+
+## 8 September 2026 — Feature 10, saved mobile appearance
+
+- Added explicit Follow system / Light / Dark selection in the Profile menu.
+  Preference is stored under `vastrivo.mobile.theme.v1` in AsyncStorage; unknown
+  values fall back to system. Failed reads do not overwrite existing storage.
+- Writes are serialized and failed saves report an error without changing the
+  selected theme. System mode responds to OS color-scheme changes.
+- Splash is held until fonts and theme hydration complete; themed navigation,
+  status bar and native root background use the resolved colors.
+- Added Expo SDK-compatible AsyncStorage and splash dependencies. A native rebuild
+  is required. Storage tests, session regression and mobile type/config checks pass.
+- Device restart/upgrade/splash QA remains pending. Dependency audit reports 31
+  findings (10 high); broad dependency remediation was not applied.
+
+## 8 September 2026 — Feature 10, transient session failure handling
+
+- Startup and in-session refresh preserve SecureStore credentials on network,
+  rate-limit and server errors. Only confirmed rejection ends the session.
+- Added a themed startup retry overlay and blocked Login redirects while recovery
+  is unavailable. Refresh remains single-flight and API requests retry once.
+- Logout refreshes access before attempting revocation, then clears local state.
+- `node scripts/verify_mobile_session.mjs` and `npm.cmd run mobile:check` pass.
+  Tests mock native storage/network and execute the actual API module.
+- Feature 10 is incomplete: durable server session lifetime, rotation recovery,
+  persisted theme and real-device lifecycle verification remain pending.
+
+## 8 September 2026 — Web customer and measurement parity
+
+- Added vendor-only customer directory/detail routes and Studio navigation, with
+  debounced server search, status filters, pagination, retries, link/invite forms,
+  relationship status/timestamps and private notes.
+- Added vendor measurement create/edit/delete dialogs using the active catalog,
+  numeric validation and inches/cm conversion. Declined relationships disable
+  create/edit; deletion requires confirmation.
+- Profile shows accepted vendor fits read-only with source attribution, separately
+  from personal fits. Backend ownership/consent enforcement is reused.
+- Reused themed components and responsive layout. Production build and lint pass
+  with existing warnings; interactive browser QA remains pending in issues.md.
+- Feature #5 standalone invoices/private PDFs remains deferred; no invoice changes.
 
 ## Current milestone
 
@@ -1297,3 +1375,46 @@ files when the milestone is done.”
   it ran the schema guard before seeding and completed the API workflow. Python
   compilation, Alembic model-drift, Cloud Build YAML command validation, and
   `git diff --check` pass.
+
+## Native vendor Customers — feature 3
+
+- Added a Customers destination to Vendor Studio with the server-reported total
+  relationship count, keeping Designs, Products, Customer orders, and Customers as
+  distinct full-width navigation targets.
+- Added native relationship types and shared status presentation for `invited`,
+  `pending_acceptance`, `active`, and `declined` states.
+- Added a paginated Customers directory with debounced server-side name/exact-email/
+  phone search, relationship-status filters, pull-to-refresh, incremental loading,
+  contact details, and most-recent activity.
+- Added an Add customer sheet for exact email-and-phone account linking or secure
+  new-customer invitation, including optional vendor-private notes and clear consent
+  guidance.
+- Added the vendor-scoped customer overview with contact/account identity, status and
+  invite/accept/decline timing, relationship activity, and editable private notes.
+  Measurements and standalone invoices are labelled as upcoming Features 4 and 5;
+  unavailable counts are not misrepresented as zero.
+- Verification passed with the Expo TypeScript/public-config check and the rollback-
+  only vendor-customer API regression covering exact identity, vendor-as-customer,
+  invitation/password setup, ownership isolation, and duplicate constraints. Expo
+  Doctor also passed all 18 checks.
+
+## Vendor-recorded customer measurements — feature 4
+
+Planning update: Feature #5 (standalone customer invoices, private PDFs, download
+and sharing, and their native/web UI) is deferred to Future enhancements at the
+user's request. Its specification is retained in `continue.md`; it is no longer
+the next implementation milestone. Existing order invoicing is unaffected.
+
+- Added migration `20260908_0005` and a separate relationship-owned measurement
+  table with creating-vendor provenance, notes, category, unit, values and timestamps.
+- Added vendor-scoped create/list/detail/update/delete APIs and customer read-only
+  listing after acceptance, including source vendor name. Declined relationships
+  reject new/edited profiles. Personal profiles and existing order snapshots remain
+  separate. Category deletion checks both profile stores.
+- Native customer detail now supports measurement creation, editing and deletion,
+  using administrator fields and converting numbers when changing inches/cm. Profile
+  Measurements shows accepted vendor records with attribution and no edit controls.
+- Local database upgraded successfully; the fresh chain produced 32 tables at the
+  new head and the disposable database was removed. Model drift, mobile TypeScript/
+  Expo configuration, vendor relationship and measurement ownership/consent/validation
+  regressions passed. Device UI interaction remains unverified (see issues.md).

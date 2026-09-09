@@ -1,18 +1,18 @@
 import * as Location from "expo-location"
 import { useCallback, useEffect, useState } from "react"
 import { FlatList, Linking, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native"
-import { ChevronRight, ClipboardList, Navigation, PackageCheck, PackagePlus, Shirt } from "lucide-react-native"
+import { ChevronRight, ClipboardList, Navigation, PackageCheck, PackagePlus, Shirt, UsersRound } from "lucide-react-native"
 import { useFocusEffect, useRouter } from "expo-router"
 import MapView, { Marker, Polyline } from "react-native-maps"
 import { useSession } from "@/auth/SessionProvider"
 import { api } from "@/lib/api"
-import type { DeliveryJob, Design, PaginatedDeliveries, PaginatedOrders, Product } from "@/types/api"
+import type { DeliveryJob, Design, PaginatedDeliveries, PaginatedOrders, Product, VendorCustomerRelationshipPage } from "@/types/api"
 import { AppButton, EmptyState, ErrorState, Field, Heading, LoadingState, PageHeader, Pill, Screen } from "@/components/ui"
 import { useTheme } from "@/theme/theme"
 
 const VendorWorkspace = () => {
-  const { colors } = useTheme(); const router = useRouter() as ReturnType<typeof useRouter> & { push(path: string): void }; const [designs, setDesigns] = useState<Design[]>([]); const [products, setProducts] = useState<Product[]>([]); const [orderCount, setOrderCount] = useState(0); const [loading, setLoading] = useState(true); const [error, setError] = useState("")
-  const load = useCallback(async () => { setError(""); try { const [vendorDesigns, vendorProducts, sales] = await Promise.all([api<Design[]>("/api/vendor/designs"), api<Product[]>("/api/vendor/products"), api<PaginatedOrders>("/api/orders/vendor?limit=1&offset=0")]); setDesigns(vendorDesigns); setProducts(vendorProducts); setOrderCount(sales.total) } catch (value) { setError((value as Error).message) } finally { setLoading(false) } }, [])
+  const { colors } = useTheme(); const router = useRouter() as ReturnType<typeof useRouter> & { push(path: string): void }; const [designs, setDesigns] = useState<Design[]>([]); const [products, setProducts] = useState<Product[]>([]); const [orderCount, setOrderCount] = useState(0); const [customerCount, setCustomerCount] = useState(0); const [loading, setLoading] = useState(true); const [error, setError] = useState("")
+  const load = useCallback(async () => { setError(""); try { const [vendorDesigns, vendorProducts, sales, customers] = await Promise.all([api<Design[]>("/api/vendor/designs"), api<Product[]>("/api/vendor/products"), api<PaginatedOrders>("/api/orders/vendor?limit=1&offset=0"), api<VendorCustomerRelationshipPage>("/api/vendor/customers?limit=1&offset=0")]); setDesigns(vendorDesigns); setProducts(vendorProducts); setOrderCount(sales.total); setCustomerCount(customers.total) } catch (value) { setError((value as Error).message) } finally { setLoading(false) } }, [])
   useFocusEffect(useCallback(() => { void load() }, [load]))
   if (loading) return <LoadingState label="Opening your studio…" />
   if (error) return <ErrorState message={error} retry={() => void load()} />
@@ -21,6 +21,7 @@ const VendorWorkspace = () => {
     { badges: [`${designDrafts} draft`, `${designPending} pending`], description: "Create, review and submit made-to-measure listings", icon: Shirt, path: "/studio/designs", title: "Designs" },
     { badges: [`${productDrafts} draft`, `${productPending} pending`], description: "Manage ready-made clothes and fabric for sale", icon: PackagePlus, path: "/studio/products", title: "Products" },
     { badges: [`${orderCount} total`], description: "Open customer orders, invoices and tailoring progress", icon: ClipboardList, path: "/studio/orders", title: "Customer orders" },
+    { badges: [`${customerCount} customer${customerCount === 1 ? "" : "s"}`], description: "Link accounts, invite customers and keep private notes", icon: UsersRound, path: "/studio/customers", title: "Customers" },
   ]
   return <View style={styles.studioMenu}>{entries.map((entry) => { const Icon = entry.icon; return <Pressable accessibilityRole="button" key={entry.title} onPress={() => router.push(entry.path)} style={({ pressed }) => [styles.studioMenuItem, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.78 : 1 }]}><View style={[styles.studioIcon, { backgroundColor: colors.primarySoft }]}><Icon color={colors.primary} size={24} /></View><View style={styles.studioMenuCopy}><Text style={{ color: colors.text, fontFamily: "Fraunces_700Bold", fontSize: 20 }}>{entry.title}</Text><Text style={{ color: colors.muted, fontFamily: "Manrope_400Regular", fontSize: 12, lineHeight: 17 }}>{entry.description}</Text><View style={styles.studioBadges}>{entry.badges.map((badge) => <View key={badge} style={[styles.studioBadge, { backgroundColor: colors.surfaceMuted, borderColor: colors.border }]}><Text style={{ color: colors.muted, fontFamily: "Manrope_700Bold", fontSize: 10 }}>{badge}</Text></View>)}</View></View><ChevronRight color={colors.muted} size={20} /></Pressable> })}</View>
 }

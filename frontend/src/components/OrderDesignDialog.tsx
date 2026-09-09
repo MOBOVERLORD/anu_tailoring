@@ -3,6 +3,7 @@ import { LoaderCircle, PackageCheck, Ruler, Shirt, ShoppingCart } from "lucide-r
 import { Link, useNavigate } from "react-router-dom"
 import toast from "react-hot-toast"
 import { ApiImage } from "@/components/ApiImage"
+import { CustomOrderReferences } from "@/components/CustomOrderReferences"
 import { Dialog } from "@/components/Dialog"
 import { AppSelect } from "@/components/ui/AppSelect"
 import { useCart } from "@/context/CartContext"
@@ -16,6 +17,10 @@ export const OrderDesignDialog = ({ design, onClose }: OrderDesignDialogProps) =
   const [measurements, setMeasurements] = useState<MeasurementProfile[]>([])
   const [measurementId, setMeasurementId] = useState("")
   const [fabric, setFabric] = useState("")
+  const [colour, setColour] = useState("")
+  const [referenceDesigns, setReferenceDesigns] = useState<number[]>([])
+  const [referencePhotos, setReferencePhotos] = useState<string[]>([])
+  const [uploading, setUploading] = useState(false)
   const [clothSource, setClothSource] = useState<"customer_provided" | "vendor_supplied">("customer_provided")
   const [instructions, setInstructions] = useState("")
   const [loading, setLoading] = useState(true)
@@ -27,9 +32,9 @@ export const OrderDesignDialog = ({ design, onClose }: OrderDesignDialogProps) =
     api<MeasurementProfile[]>("/api/measurements").then((profiles) => {
       setMeasurements(profiles)
       const matching = profiles.find((profile) => profile.garment_type === design.garment_type) || profiles[0]
-      setMeasurementId(matching ? String(matching.id) : "")
+      setMeasurementId(!isCustomRequest && matching ? String(matching.id) : "")
     }).catch((error: Error) => toast.error(error.message)).finally(() => setLoading(false))
-  }, [design.garment_type])
+  }, [design.garment_type, isCustomRequest])
 
   const addToCart = (event: React.FormEvent) => {
     event.preventDefault()
@@ -38,7 +43,7 @@ export const OrderDesignDialog = ({ design, onClose }: OrderDesignDialogProps) =
     try {
       const measurement = measurements.find((item) => item.id === Number(measurementId))
       if (!measurement) throw new Error("Choose a measurement profile")
-      cart.addDesign({ vendor_id: design.vendor_id, vendor_name: design.vendor_name || "Vendor", design, measurement_profile_id: measurement.id, measurement_name: measurement.profile_name, cloth_source: clothSource, fabric_choice: fabric || null, custom_instructions: instructions.trim() || null })
+      cart.addDesign({ vendor_id: design.vendor_id, vendor_name: design.vendor_name || "Vendor", design, measurement_profile_id: measurement.id, measurement_name: measurement.profile_name, cloth_source: clothSource, colour_preference: clothSource === "vendor_supplied" ? colour.trim() || null : null, reference_design_ids: referenceDesigns, reference_photo_ids: referencePhotos, fabric_choice: fabric || null, custom_instructions: instructions.trim() || null })
       toast.success("Design added to your vendor cart")
       onClose()
       navigate("/cart")
@@ -51,10 +56,12 @@ export const OrderDesignDialog = ({ design, onClose }: OrderDesignDialogProps) =
         <div className="order-design-summary"><div>{design.thumbnail_url || design.image_url ? <ApiImage alt={design.title} src={design.thumbnail_url || design.image_url!} /> : <PackageCheck size={28} />}</div><span><small>{isCustomRequest ? "Private vendor request" : "Made-to-measure design"}</small><strong>{design.title}</strong><b>{isCustomRequest ? "Service price quoted after discussion" : `Tailoring ₹${design.base_price.toLocaleString("en-IN")}`}</b></span></div>
         <div className="field"><label htmlFor="order-measurements"><Ruler size={14} /> Measurement profile</label><AppSelect id="order-measurements" onValueChange={setMeasurementId} options={measurements.map((profile) => ({ value: String(profile.id), label: `${profile.profile_name} · ${profile.garment_type.replaceAll("_", " ")}` }))} value={measurementId} /></div>
         <div className="field cloth-source-choice"><span className="field-label"><Shirt size={14} /> Who will provide the cloth?</span><div className="segmented-control"><button className={clothSource === "customer_provided" ? "active" : ""} onClick={() => setClothSource("customer_provided")} type="button"><strong>I will provide it</strong><small>No cloth cost in the invoice</small></button><button className={clothSource === "vendor_supplied" ? "active" : ""} onClick={() => setClothSource("vendor_supplied")} type="button"><strong>Vendor will provide it</strong><small>Vendor quotes cloth after reviewing measurements</small></button></div></div>
+        {clothSource === "vendor_supplied" && <div className="field"><label htmlFor="order-colour">Colour preference <small>optional</small></label><input id="order-colour" maxLength={100} value={colour} onChange={(event) => setColour(event.target.value)} placeholder="e.g. Navy blue with gold accents" /></div>}
+        {isCustomRequest && design.vendor_id && <CustomOrderReferences vendorId={design.vendor_id} designs={referenceDesigns} photos={referencePhotos} onDesigns={setReferenceDesigns} onPhotos={setReferencePhotos} onBusy={setUploading} />}
         <div className="field"><label htmlFor="order-fabric">Fabric preference <small>optional</small></label><AppSelect id="order-fabric" onValueChange={(value) => setFabric(value === "__discuss__" ? "" : value)} options={[{ value: "__discuss__", label: "Discuss with tailor" }, { value: "cotton", label: "Cotton" }, { value: "linen", label: "Linen" }, { value: "silk", label: "Silk" }, { value: "wool", label: "Wool" }]} value={fabric || "__discuss__"} /></div>
         <div className="field"><label htmlFor="order-instructions">{isCustomRequest ? "Describe your custom garment" : "Tailoring notes"} {!isCustomRequest && <small>optional</small>}</label><textarea id="order-instructions" maxLength={1000} minLength={isCustomRequest ? 10 : undefined} onChange={(event) => setInstructions(event.target.value)} placeholder={isCustomRequest ? "Garment type, reference style, occasion, preferred fit and questions for the tailor" : "Preferred fit, occasion date, or questions for the tailor"} required={isCustomRequest} rows={isCustomRequest ? 5 : 3} value={instructions} /></div>
         <p className="order-quote-note">Items from {design.vendor_name || "this vendor"} are combined into one order. At checkout you will choose one address and pay one delivery charge for the entire vendor order.</p>
-        <div className="dialog-actions"><button className="button button-secondary" onClick={onClose} type="button">Cancel</button><button className="button" disabled={submitting || (isCustomRequest && instructions.trim().length < 10)} type="submit">{submitting ? <LoaderCircle className="spin" size={17} /> : <ShoppingCart size={17} />} Add to cart</button></div>
+        <div className="dialog-actions"><button className="button button-secondary" onClick={onClose} type="button">Cancel</button><button className="button" disabled={!measurementId || uploading || submitting || (isCustomRequest && instructions.trim().length < 10)} type="submit">{submitting ? <LoaderCircle className="spin" size={17} /> : <ShoppingCart size={17} />} Add to cart</button></div>
       </form>}
   </Dialog>
 }

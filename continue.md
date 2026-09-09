@@ -1,10 +1,21 @@
 # Continuation plan: Vendor Studio, customers, measurements, and invoices
 
-Last updated: 2 September 2026
+Last updated: 9 September 2026
 
-Status: Features 1 (Studio navigation redesign) and 2 (secure vendor-customer
-relationship backend) are complete. Features 3–10 remain pending and must
-continue one feature at a time.
+Additional order requirements implemented: typed vendor-cloth colour, custom photo
+and same-vendor design references, explicit personal measurement selection, and
+web/native order-detail display. Migration head is `20260909_0007`. References are
+style guidance, not additional purchased designs; one selected fit applies to each
+custom request. Live upload/device/browser QA and abandoned-upload cleanup remain
+recorded in issues.md. Feature 5 remains deferred.
+
+Status: Features 1–4 (Studio navigation, vendor-customer relationships, native
+customer directory, and vendor-recorded measurements) are implemented. Feature 5
+is deferred to Future enhancements at the user's request. Continue the remaining
+work one feature at a time; standalone invoice/PDF work is outside the active scope.
+Web customer-directory and vendor-measurement parity is implemented (8 September):
+vendor routes under `/vendor/customers`, and read-only vendor fits in Profile.
+Build and lint pass with existing warnings; interactive browser/device QA is pending.
 
 Maintenance note: the whole-piece product stock validation issue was resolved on
 2 September 2026 across FastAPI, desktop/mobile-width web, and the native create
@@ -113,6 +124,13 @@ Security and integrity requirements:
 
 ## 3. Customer directory and detail UI
 
+**Completed on 8 September 2026.** Native Vendor Studio now includes a Customers
+destination with a live linked-customer count, debounced server-side search,
+relationship-status filters, paginated loading, pull-to-refresh, exact-account
+linking, secure new-customer invitations, and vendor-scoped detail overviews with
+editable private notes. Measurements and standalone invoices remain deliberately
+queued as Features 4 and 5; their unavailable counts are not represented as zero.
+
 Add a Customers screen under Studio with:
 
 - search by customer name, exact email, or phone;
@@ -130,6 +148,14 @@ Customer detail should use expandable sections or tabs:
 
 ## 4. Vendor-recorded customer measurements
 
+**Implemented on 8 September 2026.** Separate vendor measurement records use the
+customer relationship as their ownership link and record the creating vendor and
+timestamps. Vendor CRUD validates active catalog fields and measurement ranges.
+Native customer overviews support add/edit/delete and inch/cm conversion. Customers
+can read the vendor's profiles and source under Profile → Measurements only after
+acceptance. Automated checks passed; Android/iOS device interaction remains to be
+verified. Last-used tracking is deferred until these profiles can be used in orders.
+
 Vendors can create multiple named measurement profiles for each linked customer.
 Reuse the administrator-configured measurement categories, garment types, units,
 validation ranges, and India-tailoring field definitions already in the project.
@@ -145,7 +171,15 @@ A vendor may read and edit only profiles they created for their customer unless 
 future sharing/consent feature explicitly broadens access. The customer should be
 able to see the profile and its source after accepting the relationship.
 
-## 5. Standalone customer invoices
+## Future enhancements
+
+### Feature 5 — Standalone customer invoices and private PDFs
+
+**Deferred at the user's request.** Keep the specification below for future work.
+Do not implement standalone customer invoices, their native/web UI, PDF generation,
+download, or sharing during the current continuation. Related invoice requirements
+in the API proposal, implementation order, verification, and acceptance criteria
+below are also deferred. Existing marketplace order invoices remain supported.
 
 These invoices are independent of marketplace orders. A vendor can create multiple
 invoices for a customer and see the complete invoice history under that customer.
@@ -168,7 +202,7 @@ Important rules:
 - the invoice list shows status, number, issue date, total, and download action;
 - invoice detail can be opened from the customer record.
 
-### PDF download and sharing
+#### PDF download and sharing
 
 - Generate the PDF on the backend using a Cloud Run-friendly library such as
   ReportLab; do not depend on client-side browser printing.
@@ -257,7 +291,26 @@ reviewing the existing order invoice and measurement modules.
 
 ## 10. Mobile session and theme persistence
 
-**Pending.** The current native implementation stores the rotating refresh token in
+**In progress (8 September).** Transient startup/refresh failures now retain the
+saved credential and show a themed retry overlay without redirecting to Login.
+Confirmed refresh rejection clears credentials; authorized requests retry once,
+and logout refreshes access before attempting server revocation. Mocked API
+regressions and native type/config checks pass. Durable mobile sessions and refresh
+recovery are now implemented (9 September); device lifecycle QA remains pending.
+Migration `20260908_0006` allows mobile sessions without time expiry. New refresh
+credentials are opaque and hashed server-side; valid legacy credentials migrate
+on refresh, while already-expired sessions require sign-in. Browser expiry is
+unchanged. Exact retries use a SecureStore-persisted request ID and reproduce the
+latest successor; replay with a different request ID revokes the session.
+Deploy the backend/migration before the updated native app. Downgrading this
+migration revokes durable sessions. Sign-out-all-devices remains a future feature.
+Theme persistence is now implemented with a versioned AsyncStorage key, explicit
+system/light/dark selection, ordered writes, and splash gating until fonts and
+preference hydration finish. Storage regression and mobile checks pass. New native
+storage/splash dependencies require rebuilding the development/installed app;
+restart, upgrade and visual splash behavior still require device verification.
+
+The current native implementation stores the rotating refresh token in
 `expo-secure-store`, which is the correct location, but it still needs the following
 reliability and lifecycle work.
 
@@ -293,9 +346,8 @@ Implementation requirements:
 
 ### Persistent theme choice
 
-The current `ThemeProvider` keeps its override only in component state, so a reload
-or app update falls back to the operating-system theme. Replace that behavior with a
-stored preference:
+The former state-only override has been replaced with a stored preference. Verify
+the following behavior on rebuilt Android/iOS apps:
 
 - model the preference explicitly as `system`, `light`, or `dark`;
 - persist it under a versioned native storage key (AsyncStorage is appropriate for
@@ -312,9 +364,9 @@ stored preference:
 
 ## Resume prompt
 
-“Continue from `continue.md` one feature at a time. Features 1 and 2 are complete;
-implement only Feature 3, the native vendor Customers directory and customer detail
-overview UI, next. Use the existing `/api/vendor/customers` relationship APIs,
-preserve light/dark themes and server-side ownership, and update `progress.md` plus
-`issues.md` after verification. Keep measurements, invoices, web parity, and Feature
-10 (persistent mobile session and theme preference) queued as separate features.”
+“Continue from `continue.md` one feature at a time. Features 1–4 are implemented.
+Skip Feature 5: standalone customer invoices and private PDFs are saved under Future
+enhancements, including their native/web UI and sharing. Continue the remaining
+non-invoice work, preserving vendor ownership and both themes, and update
+`progress.md` and `issues.md` after verification. Feature 10 remains a separate
+mobile session/theme persistence milestone.”

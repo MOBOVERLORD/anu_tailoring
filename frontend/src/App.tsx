@@ -11,6 +11,8 @@ import VendorWorkspace from "./pages/VendorWorkspace"
 import Orders from "./pages/Orders"
 import Shop from "./pages/Shop"
 import VendorProducts from "./pages/VendorProducts"
+import VendorCustomers from "./pages/VendorCustomers"
+import VendorCustomerDetail from "./pages/VendorCustomerDetail"
 import Vendors from "./pages/Vendors"
 import VendorStorefront from "./pages/VendorStorefront"
 import Cart from "./pages/Cart"
@@ -99,6 +101,8 @@ function App() {
           <Route path="vendors/:vendorId" element={<RequireAuth><VendorStorefront /></RequireAuth>} />
           <Route path="vendor" element={<RequireAuth><RequireRole roles={["vendor"]}><VendorWorkspace /></RequireRole></RequireAuth>} />
           <Route path="vendor/products" element={<RequireAuth><RequireRole roles={["vendor"]}><VendorProducts /></RequireRole></RequireAuth>} />
+          <Route path="vendor/customers" element={<RequireAuth><RequireRole roles={["vendor"]}><VendorCustomers /></RequireRole></RequireAuth>} />
+          <Route path="vendor/customers/:relationshipId" element={<RequireAuth><RequireRole roles={["vendor"]}><VendorCustomerDetail /></RequireRole></RequireAuth>} />
           <Route path="vendor/sales-orders" element={<RequireAuth><RequireRole roles={["vendor"]}><Orders mode="sales" /></RequireRole></RequireAuth>} />
           <Route path="admin" element={<RequireAuth><RequireRole roles={["admin", "super_admin"]}><AdminWorkspace /></RequireRole></RequireAuth>} />
           <Route path="delivery-agent" element={<RequireAuth><RequireRole roles={["delivery_agent"]}><DeliveryAgentWorkspace /></RequireRole></RequireAuth>} />

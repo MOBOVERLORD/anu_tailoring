@@ -315,6 +315,8 @@ export const OrderItemDetail = ({ item, order, profile, onUpdated, onOrderUpdate
 
   return (
     <div className={`order-item-detail ${order.combined_order ? "is-combined" : ""}`}>
+      {item.colour_preference && <p>Colour preference: {item.colour_preference}</p>}
+      {!!item.design_references?.length && <section><h4>Customer design references</h4><div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>{item.design_references.map((reference, index) => reference.url ? <ApiImage key={index} src={reference.url} alt="Customer reference" style={{ width: 150, height: 150, objectFit: "contain" }} /> : <p key={index}>{reference.title} (design #{reference.design_id})</p>)}</div></section>}
       <section className="order-detail-grid">
         <div className="order-detail-design">
           <div className="order-detail-image">{item.design.thumbnail_url || item.design.image_url ? <ApiImage alt={item.design.title} src={item.design.thumbnail_url || item.design.image_url!} /> : <Shirt size={34} />}</div>

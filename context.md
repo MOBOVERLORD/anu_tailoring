@@ -97,8 +97,9 @@ And update conetxt.md on the technical stack & architectural guidelines
 - PostgreSQL remains the concurrency authority through unique lower-case email,
   normalized phone, vendor/customer pair, and invitation-token constraints. API
   services translate integrity races into deterministic conflict/idempotent results.
-- Schema changes are versioned in Alembic. Application startup checks the migration
-  head and does not mutate production schema automatically.
+- Schema changes are versioned in Alembic. The preferred production path applies
+  them through a migration job before deployment; guarded container/application
+  startup can serialize and apply a skipped upgrade as a recovery path.
 - Git-triggered Cloud Run delivery uses `cloudbuild.yaml` to update and execute the
   `anu-tailoring-git-migrate` job with the commit image before updating the service.
   A failed migration therefore blocks deployment instead of surfacing as a port-8080
@@ -110,6 +111,16 @@ And update conetxt.md on the technical stack & architectural guidelines
 - FastAPI lifespan calls the same migration guard before data seeding. This covers
   Cloud Run revisions with a retained service-level command override, since such an
   override bypasses the image's Docker `CMD`.
+- Native Vendor Studio exposes the vendor-customer relationship API through a
+  paginated/searchable Customers directory, exact-account link and secure invitation
+  forms, status-aware overview, and editable vendor-private notes. Relationship IDs
+  are route identifiers only; the backend remains the ownership authority.
+- Vendor-recorded measurements use `vendor_customer_measurements`, separate from
+  personal/order profiles. The relationship FK identifies the customer and owner;
+  `created_by_vendor_id` preserves provenance. Vendor endpoints require ownership;
+  customer read-only access joins only accepted relationships and includes vendor
+  source. Native screens reuse the active administrator catalog. Migration head is
+  `20260909_0007` (including durable mobile sessions and order references).
 - Product inventory follows its selling unit: `piece` stock is a non-negative whole
   number, while `metre` stock may be decimal. This invariant is enforced in Pydantic
   create/update contracts and mirrored by web/native input validation; price remains

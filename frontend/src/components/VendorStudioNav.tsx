@@ -1,4 +1,4 @@
-import { Palette, ShoppingBag } from "lucide-react"
+import { Palette, ShoppingBag, Users } from "lucide-react"
 import { NavLink } from "react-router-dom"
 
 export const VendorStudioNav = () => (
@@ -10,6 +10,10 @@ export const VendorStudioNav = () => (
     <NavLink to="/vendor/products">
       <ShoppingBag size={17} />
       <span><strong>Products</strong><small>Clothes for sale</small></span>
+    </NavLink>
+    <NavLink to="/vendor/customers">
+      <Users size={17} />
+      <span><strong>Customers</strong><small>Directory and measurements</small></span>
     </NavLink>
   </nav>
 )

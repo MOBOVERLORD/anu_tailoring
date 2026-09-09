@@ -195,6 +195,8 @@ class AuthSession(Base):
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     refresh_token_hash: Mapped[str] = mapped_column(String(64))
+    previous_refresh_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    refresh_request_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     client_type: Mapped[str] = mapped_column(
         String(20), default="web", server_default="web"
     )
@@ -205,7 +207,7 @@ class AuthSession(Base):
     last_used_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, server_default=func.now()
     )
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True, nullable=True)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -352,6 +354,21 @@ class MeasurementProfile(Base):
     # Order items reference this profile via RESTRICT (see OrderItem.measurement_profile_id) —
     # a profile used in a past order can't be hard-deleted; a full value snapshot is also
     # copied onto OrderItem.measurement_snapshot at order time, so history survives either way.
+
+
+class VendorCustomerMeasurement(Base):
+    __tablename__ = "vendor_customer_measurements"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    relationship_id: Mapped[int] = mapped_column(ForeignKey("vendor_customer_relationships.id", ondelete="CASCADE"), index=True)
+    created_by_vendor_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    profile_name: Mapped[str] = mapped_column(String(50))
+    garment_type: Mapped[str] = mapped_column(String(50))
+    gender: Mapped[str] = mapped_column(String(20))
+    unit: Mapped[str] = mapped_column(String(10))
+    measurements: Mapped[dict] = mapped_column(JSONB)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
 
 class MeasurementCategory(Base):
@@ -629,6 +646,15 @@ class Order(Base):
     )
 
 
+class OrderReferencePhoto(Base):
+    __tablename__ = "order_reference_photos"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    object_name: Mapped[str] = mapped_column(String(500))
+    content_type: Mapped[str] = mapped_column(String(50))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class OrderItem(Base):
     __tablename__ = "order_items"
 
@@ -639,6 +665,8 @@ class OrderItem(Base):
         ForeignKey("measurement_profiles.id", ondelete="RESTRICT")
     )
     fabric_choice: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    colour_preference: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    design_references: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
     custom_instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # The customer owns this decision. Vendors quote against it but cannot
     # switch who supplies the cloth while preparing an invoice.

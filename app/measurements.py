@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.database import get_db
-from app.models import MeasurementCategory, MeasurementProfile, User
+from app.models import MeasurementCategory, MeasurementProfile, VendorCustomerMeasurement, User
 from app.schemas import (
     MeasurementCategoryCreate,
     MeasurementCategoryResponse,
@@ -122,7 +122,8 @@ async def delete_measurement_category(
         .where(MeasurementProfile.garment_type == category.garment_type)
         .limit(1)
     )
-    if in_use:
+    vendor_in_use = await db.scalar(select(VendorCustomerMeasurement.id).where(VendorCustomerMeasurement.garment_type == category.garment_type).limit(1))
+    if in_use or vendor_in_use:
         raise HTTPException(
             status_code=409,
             detail="This category is used by measurement profiles. Deactivate it instead.",

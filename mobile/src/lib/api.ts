@@ -5,12 +5,15 @@ import type { MobileToken } from "@/types/api"
 const UI_HEADER = "VastrivoUI"
 const REFRESH_KEY = "vastrivo.mobile.refresh"
 const DEVICE_KEY = "vastrivo.mobile.device"
+const PENDING_KEY = "vastrivo.mobile.refresh.pending.v1"
 const configuredOrigin = process.env.EXPO_PUBLIC_API_URL?.trim()
 export const API_ORIGIN = (configuredOrigin || "http://10.0.2.2:8000").replace(/\/$/, "")
 
 let accessToken: string | null = null
 let refreshPromise: Promise<string> | null = null
 let authFailureHandler: (() => void) | null = null
+
+export class SessionRejectedError extends Error {}
 
 const secureOptions: SecureStore.SecureStoreOptions = {
   keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
@@ -29,13 +32,15 @@ export const getDeviceId = async () => {
 }
 
 export const saveMobileSession = async (tokens: MobileToken) => {
-  accessToken = tokens.access_token
   await SecureStore.setItemAsync(REFRESH_KEY, tokens.refresh_token, secureOptions)
+  accessToken = tokens.access_token
+  // The successor is durable now; stale recovery metadata is no longer needed.
+  await SecureStore.deleteItemAsync(PENDING_KEY, secureOptions).catch(() => undefined)
 }
 
 export const clearMobileSession = async () => {
   accessToken = null
-  await SecureStore.deleteItemAsync(REFRESH_KEY, secureOptions)
+  await Promise.all([SecureStore.deleteItemAsync(REFRESH_KEY, secureOptions), SecureStore.deleteItemAsync(PENDING_KEY, secureOptions)])
 }
 
 const messageFrom = async (response: Response) => {
@@ -52,15 +57,27 @@ export const refreshMobileSession = async (): Promise<string> => {
   if (refreshPromise) return refreshPromise
   refreshPromise = (async () => {
     const refreshToken = await SecureStore.getItemAsync(REFRESH_KEY, secureOptions)
-    if (!refreshToken) throw new Error("Your session has expired. Please sign in again.")
+    if (!refreshToken) throw new SessionRejectedError("Please sign in.")
+    const saved = await SecureStore.getItemAsync(PENDING_KEY, secureOptions)
+    let pending: { token: string; id: string } | null = null
+    try { pending = saved ? JSON.parse(saved) : null } catch { /* Replace corrupt pending metadata. */ }
+    if (!pending || pending.token !== refreshToken || typeof pending.id !== "string" || pending.id.length < 32) {
+      pending = { token: refreshToken, id: Crypto.randomUUID() }
+      // Persist before dispatch so process death and lost responses use the same request.
+      await SecureStore.setItemAsync(PENDING_KEY, JSON.stringify(pending), secureOptions)
+    }
     const response = await fetch(absoluteUrl("/api/auth/mobile/refresh"), {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Requested-With": UI_HEADER },
-      body: JSON.stringify({ refresh_token: refreshToken, device_id: await getDeviceId() }),
+      body: JSON.stringify({ refresh_token: refreshToken, device_id: await getDeviceId(), request_id: pending.id }),
     })
     if (!response.ok) {
-      await clearMobileSession()
-      throw new Error(await messageFrom(response))
+      const message = await messageFrom(response)
+      if (response.status === 401) {
+        await clearMobileSession()
+        throw new SessionRejectedError(message)
+      }
+      throw new Error(message)
     }
     const tokens = await response.json() as MobileToken
     await saveMobileSession(tokens)
@@ -85,11 +102,16 @@ export async function api<T>(path: string, init: RequestInit = {}, retry = true)
   if (response.status === 401 && retry && accessToken && !path.startsWith("/api/auth/mobile/")) {
     try {
       await refreshMobileSession()
-      return api<T>(path, init, false)
     } catch (error) {
-      authFailureHandler?.()
+      if (error instanceof SessionRejectedError) authFailureHandler?.()
       throw error
     }
+    return api<T>(path, init, false)
+  }
+  if (response.status === 401 && accessToken && !retry && !path.startsWith("/api/auth/mobile/")) {
+    await clearMobileSession()
+    authFailureHandler?.()
+    throw new SessionRejectedError(await messageFrom(response))
   }
   if (!response.ok) throw new Error(await messageFrom(response))
   if (response.status === 204) return undefined as T

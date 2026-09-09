@@ -274,6 +274,8 @@ export interface OrderItem {
   design: Design
   measurement_profile: MeasurementProfile
   cloth_source: "vendor_supplied" | "customer_provided"
+  colour_preference?: string | null
+  design_references?: { design_id?: number; title?: string; photo_id?: string; url?: string }[]
   fabric_choice: string | null
   custom_instructions: string | null
   measurement_snapshot: {

@@ -25,10 +25,12 @@ from app import (
     media,
     notifications,
     orders,
+    order_references,
     payments,
     products,
     vendors,
     vendor_customers,
+    vendor_measurements,
     vendor_designs,
 )
 
@@ -135,10 +137,12 @@ async def security_headers(request: Request, call_next):
 
 app.include_router(auth.router)
 app.include_router(designs.router)
+app.include_router(vendor_measurements.router)
 app.include_router(measurements.router)
 app.include_router(measurements.admin_router)
 app.include_router(addresses.router)
 app.include_router(orders.router)
+app.include_router(order_references.router)
 app.include_router(orders.admin_router)
 app.include_router(payments.router)
 app.include_router(products.catalog_router)
