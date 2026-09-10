@@ -57,7 +57,7 @@ function endBrowserSession(redirect: boolean) {
   currentUserPromise = null
   inFlightGets.clear()
   window.dispatchEvent(new Event(AUTH_EVENT))
-  if (redirect && window.location.pathname !== "/login") window.location.replace("/login")
+  if (redirect && window.location.pathname !== "/login") window.location.replace(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search + window.location.hash)}`)
 }
 
 export function clearSession() {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Navigate, BrowserRouter as Router, Route, Routes } from "react-router-dom"
+import { Navigate, BrowserRouter as Router, Route, Routes, useLocation } from "react-router-dom"
 import Layout from "./components/Layout"
 import Home from "./pages/Home"
 import PublicHome from "./pages/PublicHome"
@@ -46,7 +46,8 @@ function useDefaultInputLimits() {
 }
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
-  return getAccessToken() ? children : <Navigate replace to="/login" />
+  const location = useLocation()
+  return getAccessToken() ? children : <Navigate replace to={`/login?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`} />
 }
 
 function HomeRoute() {

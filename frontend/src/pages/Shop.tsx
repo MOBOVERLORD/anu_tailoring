@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { CheckCircle2, ImageIcon, LoaderCircle, Package, Search, ShoppingBag, Store } from "lucide-react"
 import toast from "react-hot-toast"
-import { useSearchParams } from "react-router-dom"
+import { Link, useSearchParams } from "react-router-dom"
 import { ApiImage } from "@/components/ApiImage"
 import { Dialog } from "@/components/Dialog"
 import { ImageLightbox } from "@/components/ImageLightbox"
@@ -91,7 +91,7 @@ const Shop = () => {
       </section>
 
       {loading ? <div className="loading-state"><LoaderCircle className="spin" /> Loading shop…</div> : visible.length === 0 ? (
-        <section className="empty-state"><ShoppingBag size={46} strokeWidth={1.4} /><h2>No products match</h2><p>Try another filter or check back after vendors publish new stock.</p></section>
+        <section className="empty-state"><ShoppingBag size={46} strokeWidth={1.4} /><h2>{search.trim() || type !== "all" || category !== "all" ? "No products match" : "No products available yet"}</h2><p>{search.trim() || type !== "all" || category !== "all" ? "Try a different search or clear your filters." : "New clothing and fabrics will appear here when vendors publish stock."}</p>{search.trim() || type !== "all" || category !== "all" ? <button className="button button-secondary" onClick={() => { setSearch(""); setType("all"); setCategory("all") }}>Clear filters</button> : <Link className="button button-primary" to="/">Browse designs</Link>}</section>
       ) : (
         <section className="product-grid">
           {visible.map((product) => (

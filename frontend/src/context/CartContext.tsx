@@ -36,6 +36,7 @@ interface CartValue {
   vendorId: number | null
   vendorName: string | null
   addDesign: (line: Omit<CartDesignLine, "key" | "kind">) => void
+  addDesigns: (lines: Omit<CartDesignLine, "key" | "kind">[]) => void
   addProduct: (line: Omit<CartProductLine, "key" | "kind">) => void
   updateProductQuantity: (key: string, quantity: number) => void
   removeLine: (key: string) => void
@@ -76,6 +77,14 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     lines,
     vendorId: lines[0]?.vendor_id ?? null,
     vendorName: lines[0]?.vendor_name ?? null,
+    addDesigns: (batch) => {
+      if (!batch.length) return
+      ensureVendor(batch[0].vendor_id)
+      if (batch.some((line) => line.vendor_id !== batch[0].vendor_id)) throw new Error("Choose items from one vendor.")
+      if (lines.length + batch.length > 20) throw new Error("A cart can contain up to 20 items. Reduce the quantity or checkout your current cart first.")
+      const additions = batch.map((line) => ({ ...line, key: crypto.randomUUID(), kind: "design" as const }))
+      setLines((current) => [...current, ...additions])
+    },
     addDesign: (line) => {
       ensureVendor(line.vendor_id)
       setLines((current) => [...current, { ...line, key: crypto.randomUUID(), kind: "design" }])

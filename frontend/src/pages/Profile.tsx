@@ -415,6 +415,7 @@ const Profile = () => {
   const [activities, setActivities] = useState<AppNotification[]>([])
   const [activityLoading, setActivityLoading] = useState(false)
   const [activityHasMore, setActivityHasMore] = useState(false)
+  const [expandedFits, setExpandedFits] = useState<Set<number>>(new Set())
   const [measurementDialog, setMeasurementDialog] = useState<MeasurementProfile | "new" | null>(null)
   const [addressDialog, setAddressDialog] = useState<DeliveryAddress | "new" | null>(null)
   const [savingProfile, setSavingProfile] = useState(false)
@@ -424,6 +425,8 @@ const Profile = () => {
   const [savingVendorPickup, setSavingVendorPickup] = useState(false)
   const [savingVendorDelivery, setSavingVendorDelivery] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
+  const [loadRetry, setLoadRetry] = useState(0)
   const profileContent = useRef<HTMLElement>(null)
   const navigate = useNavigate()
 
@@ -437,6 +440,8 @@ const Profile = () => {
   }, [searchParams])
 
   useEffect(() => {
+    setLoading(true)
+    setLoadError("")
     Promise.all([
       getCurrentUser(true),
       api<MeasurementProfile[]>("/api/measurements"),
@@ -474,11 +479,10 @@ const Profile = () => {
         setCategories(measurementCategories)
       })
       .catch((error: Error) => {
-        toast.error(error.message)
-        navigate("/login")
+        setLoadError(error.message)
       })
       .finally(() => setLoading(false))
-  }, [navigate])
+  }, [navigate, loadRetry])
 
   useEffect(() => {
     if (section !== "activity") return
@@ -763,6 +767,8 @@ const Profile = () => {
     }
   }
 
+  if (loadError && !loading) return <div className="page empty-state"><h2>Couldn’t load your profile</h2><p role="alert">{loadError}</p><button className="button" onClick={() => setLoadRetry((value) => value + 1)}>Retry</button></div>
+
   if (loading || !profile) {
     return <div className="loading-state page"><LoaderCircle className="spin" size={28} /><p>Loading your profile…</p></div>
   }
@@ -800,7 +806,7 @@ const Profile = () => {
         <div>
           <p className="eyebrow"><CircleUserRound size={15} /> Profile & settings</p>
           <h1>Your tailoring profile</h1>
-          <p>Keep the contact, fit, and delivery information used for your made-to-measure orders in one place.</p>
+          <p>Manage your contact details, measurements, and addresses.</p>
         </div>
       </section>
       <div className="profile-layout">
@@ -813,7 +819,7 @@ const Profile = () => {
             {navItems.map((item) => {
               const Icon = item.icon
               return (
-                <button className={section === item.value ? "active" : ""} key={item.value} onClick={() => selectSection(item.value)} type="button">
+                <button aria-current={section === item.value ? "page" : undefined} className={section === item.value ? "active" : ""} key={item.value} onClick={() => selectSection(item.value)} type="button">
                   <span className="side-icon"><Icon size={18} /></span>
                   <span><strong><span className="profile-nav-desktop-label">{item.label}</span><span className="profile-nav-mobile-label">{item.mobileLabel}</span></strong><small>{item.detail}</small></span>
                   <ChevronRight size={16} />
@@ -987,12 +993,12 @@ const Profile = () => {
                           </div>
                         </div>
                         <div className="measurement-summary">
-                          {entries.slice(0, 4).map(([key, value]) => (
+                          {(expandedFits.has(item.id) ? entries : entries.slice(0, 4)).map(([key, value]) => (
                             <span key={key}><small>{FIELD_LABELS[key] || key}</small><strong>{value} {item.unit === "inches" ? "in" : "cm"}</strong></span>
                           ))}
                           {!entries.length && <p className="muted-copy">No values added yet.</p>}
                         </div>
-                        {entries.length > 4 && <p className="more-measurements">+{entries.length - 4} more measurements</p>}
+                        {entries.length > 4 && <button type="button" className="fit-expand-button" aria-expanded={expandedFits.has(item.id)} onClick={() => setExpandedFits((previous) => { const next = new Set(previous); if (next.has(item.id)) next.delete(item.id); else next.add(item.id); return next })}>{expandedFits.has(item.id) ? "Show fewer measurements" : `View all ${entries.length} measurements`}</button>}
                       </article>
                     )
                   })}

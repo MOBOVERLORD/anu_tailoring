@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom"
 import toast from "react-hot-toast"
 import { ApiImage } from "@/components/ApiImage"
 import { CustomOrderReferences } from "@/components/CustomOrderReferences"
+import { CustomOrderComposer } from "@/components/CustomOrderComposer"
 import { Dialog } from "@/components/Dialog"
 import { AppSelect } from "@/components/ui/AppSelect"
 import { useCart } from "@/context/CartContext"
@@ -12,7 +13,9 @@ import type { Design, MeasurementProfile } from "@/types/api"
 
 interface OrderDesignDialogProps { design: Design; onClose: () => void }
 
-export const OrderDesignDialog = ({ design, onClose }: OrderDesignDialogProps) => {
+export const OrderDesignDialog = (props: OrderDesignDialogProps) => props.design.is_custom_request_template ? <CustomOrderComposer {...props} /> : <SingleDesignDialog {...props} />
+
+const SingleDesignDialog = ({ design, onClose }: OrderDesignDialogProps) => {
   const isCustomRequest = design.is_custom_request_template
   const [measurements, setMeasurements] = useState<MeasurementProfile[]>([])
   const [measurementId, setMeasurementId] = useState("")

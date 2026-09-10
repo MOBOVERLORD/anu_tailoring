@@ -1,5 +1,21 @@
 # Vastrivo — Progress
 
+## 10 September 2026 — Customer UI simplification
+
+- Unquoted custom orders now display “Awaiting vendor quote” instead of presenting
+  delivery-only amounts as a final total or showing zero-price tailoring.
+- Customer cancellation is a secondary action after the combined invoice status;
+  existing cancellation rules and confirmation remain unchanged.
+- Profile has a shorter header, accessible active-section indication, and expandable
+  saved measurement values without opening the edit dialog.
+- Shop distinguishes no stock from no filter matches and offers Browse designs or
+  Clear filters as appropriate.
+- Verified signed-in Profile Details, Addresses and Activity loading, measurement
+  expansion, order quote labels/cancellation placement, and shop filter reset in
+  the browser. Build/lint pass with existing warnings. No customer records changed.
+- This verification was web/light-theme at the current browser width; native,
+  phone-width and dark-theme visual checks remain pending. Catalogue data untouched.
+
 Last updated: 2026-09-09
 
 ## 9 September 2026 — Order colour and custom design references
@@ -1418,3 +1434,20 @@ the next implementation milestone. Existing order invoicing is unaffected.
   new head and the disposable database was removed. Model drift, mobile TypeScript/
   Expo configuration, vendor relationship and measurement ownership/consent/validation
   regressions passed. Device UI interaction remains unverified (see issues.md).
+## 2026-09-10 — Web custom-order composer
+
+- Replaced the native-looking reference file input with an Add design photo button; existing private image previews and upload validation remain.
+- Custom requests now support multiple garment entries in one dialog, one optional vendor design OR uploaded photo per entry, quantity, and an explicit measurement profile for each piece. The same profile can be reused. Colour remains available for vendor-supplied cloth.
+- Entries expand into separate measured cart lines using the existing backend order model; batch insertion validates the vendor and 20-item limit before adding anything. No database migration required. Native mobile and regular-design quantity flows are unchanged.
+- Verified build, lint (existing three Fast Refresh warnings), and three Node tests covering quantity bounds, preserved/new fit selections, and multi-entry expansion. Signed-in browser checks confirmed quantity 3 produces three selectors, entry switching retains settings, and only one reference design stays selected. No order submitted; live photo upload and phone-width checks remain pending.
+## 2026-09-10 — Simpler custom-order UX
+
+- Replaced garment tabs with collapsible summary cards; only one editor opens at a time. Summaries show quantity, measurement completion and selected profile names.
+- Added explicit vendor-design/photo choices, quantity beside design, compact measurement grid, optional colour/fabric section, and persistent total + Add & review cart footer. Required garment description stays visible.
+- Build, lint and three draft tests passed (existing warnings unchanged). Browser screenshots and interactions verified collapse, adding a second card and retained first-card settings. Phone-width and live upload verification remain pending; no orders placed.
+## 2026-09-10 — Customer journey reliability pass
+
+- Confirmed and fixed lost login destination: protected routes and expired sessions now carry a local-only next path, including query/hash. Login errors stay visible inline. Added two redirect-safety tests.
+- Profile network failures now offer Retry instead of redirecting to login; cart address failures no longer masquerade as missing addresses; orders failures no longer appear as an empty history.
+- Custom-order cart totals now say Subtotal so far and explain the quote-approval next step.
+- Build/lint and five focused tests passed; existing bundle/Fast Refresh warnings unchanged. Browser end-to-end validation remains pending. Account-scoped cart recovery, draft resumption across measurement editing, filter/scroll preservation and broader profile edit guards are not implemented in this pass.

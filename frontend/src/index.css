@@ -4985,7 +4985,7 @@ select option,
   align-items: flex-end;
   justify-content: space-between;
   gap: 28px;
-  padding: clamp(24px, 4vw, 38px);
+  padding: 20px 24px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--brand) 20%, var(--border));
   border-radius: 24px;
@@ -5000,7 +5000,7 @@ select option,
 }
 
 .profile-hero h1 {
-  font-size: clamp(36px, 5vw, 52px);
+  font-size: clamp(28px, 3vw, 36px);
   line-height: 1.05;
 }
 
@@ -5009,6 +5009,20 @@ select option,
   font-size: 14px;
   line-height: 1.65;
 }
+
+.fit-expand-button {
+  color: var(--brand);
+  background: transparent;
+  border: 0;
+  padding: 10px 0;
+  min-height: 44px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.fit-expand-button:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
+.order-secondary-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 8px 0; }
+.order-secondary-actions small { color: var(--text-soft); }
 
 .profile-content .section-heading h2 {
   letter-spacing: -.02em;
@@ -10457,4 +10471,75 @@ a.map-attribution {
   .public-safety { grid-template-columns: 1fr; }
   .public-cta { align-items: stretch; flex-direction: column; }
   .public-cta .button { width: 100%; }
+}
+/* A compact custom-order composer: one garment editor at a time. */
+.custom-entry-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.custom-entry-fields { display: grid; gap: 16px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.custom-entry-fields > legend { font-weight: 700; margin-bottom: 12px; }
+.custom-entry-fields fieldset { min-width: 0; }
+.custom-composer { display: flex; flex-direction: column; overflow: hidden; }
+.custom-composer .order-form { padding: 0; display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+.garment-cards { display: grid; gap: 12px; padding: 20px 24px 12px; }
+.garment-card { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.garment-card.is-open { border-color: var(--brand); }
+.garment-summary-image { width: 44px; height: 52px; object-fit: contain; border-radius: 6px; flex-shrink: 0; background: var(--surface); }
+.garment-field-error { color: var(--danger, #b42318); }
+.custom-composer [aria-invalid="true"] { border-color: var(--danger, #b42318); }
+.measurement-reuse { justify-self: start; font-size: 12px; }
+.garment-undo { margin: 0 24px 12px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+.garment-card-header { display: flex; align-items: center; background: var(--surface-soft); }
+.garment-card-header .garment-card-heading { flex: 1; min-width: 0; }
+.garment-remove { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; min-width: 44px; margin-right: 10px; padding: 8px; background: transparent; border: 0; border-radius: 8px; color: var(--text-soft); cursor: pointer; }
+.garment-remove:hover { background: var(--surface); color: var(--text); }
+.garment-remove:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.garment-remove:disabled { opacity: .5; cursor: not-allowed; }
+@media (max-width: 540px) { .garment-remove span { display: none; } }
+.garment-card-heading { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; padding: 14px; background: var(--surface-soft); color: var(--text); border: 0; cursor: pointer; }
+.garment-card-heading:focus-visible { outline: 2px solid var(--brand); outline-offset: -3px; }
+.garment-number { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--surface); flex-shrink: 0; }
+.garment-card-summary { display: grid; gap: 3px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.garment-card-summary small, .garment-card-state { color: var(--text-soft); font-size: 12px; }
+.garment-card-state { display: flex; align-items: center; gap: 6px; }
+.is-open .garment-card-state svg { transform: rotate(180deg); }
+.garment-editor { padding: 16px; }
+.garment-design-row { display: grid; grid-template-columns: minmax(0, 1fr) 110px; gap: 16px; align-items: start; }
+.reference-choice, .reference-selected { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+.reference-choice .button { font-size: 12px; padding: 10px; }
+.reference-shop { margin: 10px 0; border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: var(--surface-soft); }
+.reference-shop-heading { display: grid; gap: 3px; margin-bottom: 10px; }
+.reference-shop-heading small { color: var(--text-soft); }
+.reference-shop-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; max-height: 320px; overflow-y: auto; }
+.reference-design-card { display: flex; flex-direction: column; gap: 6px; text-align: left; min-width: 0; padding: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); color: var(--text); cursor: pointer; }
+.reference-design-card:hover, .reference-design-card[aria-pressed="true"] { border-color: var(--brand); }
+.reference-design-card:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.reference-design-card strong { overflow-wrap: anywhere; font-size: 13px; }
+.reference-design-card small { color: var(--brand); }
+.reference-design-image { display: grid; place-items: center; width: 100%; height: 130px; background: var(--surface-soft); border-radius: 7px; overflow: hidden; }
+.reference-design-image img { width: 100%; height: 100%; object-fit: contain; }
+.reference-selected-image { display: grid; place-items: center; width: 64px; height: 72px; overflow: hidden; border-radius: 8px; background: var(--surface-soft); }
+.reference-selected-image img { width: 100%; height: 100%; object-fit: contain; }
+.garment-fit-heading { display: grid; gap: 4px; }
+.garment-fit-heading small { color: var(--text-soft); }
+.garment-fit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.custom-composer .field, .custom-composer .field + .field { margin: 0; }
+.custom-composer .custom-entry-fields { gap: 12px; }
+.garment-more { border-top: 1px solid var(--border); padding-top: 12px; }
+.garment-more summary { cursor: pointer; min-height: 44px; font-weight: 600; }
+.garment-more summary span { font-size: 12px; color: var(--text-soft); font-weight: 400; margin-left: 8px; }
+.garment-more[open] { display: grid; gap: 12px; }
+.custom-composer .order-form > .button { margin: 0 24px 12px; align-self: flex-start; }
+.composer-add-garment { margin: 0 24px 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.composer-add-garment p { margin: 0; display: grid; gap: 3px; color: var(--text-soft); font-size: 13px; line-height: 1.5; }
+.custom-composer .order-quote-note { margin: 0 24px 16px; }
+.composer-footer { position: sticky; bottom: 0; z-index: 2; background: var(--surface); border-top: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; gap: 12px; margin-top: auto; }
+.composer-footer > div { display: grid; gap: 3px; margin-right: auto; }
+.composer-footer small { color: var(--text-soft); }
+@media (max-width: 540px) {
+  .garment-cards { padding: 12px; }
+  .garment-editor { padding: 12px; }
+  .garment-design-row, .garment-fit-grid { grid-template-columns: 1fr; }
+  .garment-card-state { font-size: 11px; }
+  .composer-footer { padding: 12px; flex-wrap: wrap; gap: 8px; }
+  .composer-footer > div { flex-basis: 100%; }
+  .composer-footer > .button:last-child { flex: 1; }
 }

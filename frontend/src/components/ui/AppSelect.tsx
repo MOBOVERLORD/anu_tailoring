@@ -8,6 +8,8 @@ export interface AppSelectOption {
 }
 
 interface AppSelectProps {
+  ariaInvalid?: boolean
+  ariaDescribedBy?: string
   value: string
   options: AppSelectOption[]
   onValueChange: (value: string) => void
@@ -26,11 +28,13 @@ export function AppSelect({
   ariaLabel,
   className = "",
   disabled = false,
+  ariaInvalid,
+  ariaDescribedBy,
   placeholder = "Select an option",
 }: AppSelectProps) {
   return (
     <Select.Root disabled={disabled} onValueChange={onValueChange} value={value}>
-      <Select.Trigger aria-label={ariaLabel} className={`app-select-trigger ${className}`.trim()} id={id}>
+      <Select.Trigger aria-invalid={ariaInvalid} aria-describedby={ariaDescribedBy} aria-label={ariaLabel} className={`app-select-trigger ${className}`.trim()} id={id}>
         <Select.Value placeholder={placeholder} />
         <Select.Icon className="app-select-chevron"><ChevronDown size={15} /></Select.Icon>
       </Select.Trigger>

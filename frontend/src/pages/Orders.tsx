@@ -43,6 +43,7 @@ const Orders = ({ mode = "purchases" }: { mode?: "purchases" | "sales" }) => {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
   const [loadingMore, setLoadingMore] = useState(false)
   const [totalCount, setTotalCount] = useState(0)
   const [search, setSearch] = useState("")
@@ -56,6 +57,7 @@ const Orders = ({ mode = "purchases" }: { mode?: "purchases" | "sales" }) => {
   const [customerView, setCustomerView] = useState<CustomerOrderView>("in_progress")
 
   const loadOrders = useCallback(async () => {
+    setLoadError("")
     try {
       const me = await getCurrentUser()
       const result = await api<OrderPage>(ordersEndpoint(me.role, 0, mode))
@@ -64,7 +66,7 @@ const Orders = ({ mode = "purchases" }: { mode?: "purchases" | "sales" }) => {
       setTotalCount(result.total)
       setDrafts(Object.fromEntries(result.items.map((order) => [order.id, { status: order.status, tracking: order.tracking_number || "" }])))
     } catch (error) {
-      toast.error((error as Error).message)
+      setLoadError((error as Error).message)
     } finally {
       setLoading(false)
     }
@@ -254,9 +256,10 @@ const Orders = ({ mode = "purchases" }: { mode?: "purchases" | "sales" }) => {
         </section>
       )}
 
+      {loadError && <section className="empty-state"><h2>Couldn’t refresh your orders</h2><p role="alert">{loadError}</p><button className="button button-secondary" disabled={loading} onClick={() => { setLoading(true); void loadOrders() }}>Retry</button></section>}
       {loading ? (
         <div className="loading-state"><LoaderCircle className="spin" /> Loading orders…</div>
-      ) : orders.length === 0 ? (
+      ) : loadError && orders.length === 0 ? null : orders.length === 0 ? (
         <section className="empty-state"><Package size={48} strokeWidth={1.4} /><p className="eyebrow">Tailoring orders</p><h2>{isBuyerView && customerView === "completed" ? "No completed tailoring orders" : isBuyerView && customerView === "closed" ? "No cancelled or rejected tailoring orders" : isVendorSales ? "No customer tailoring orders yet" : "No tailoring orders in progress"}</h2><p>{isBuyerView ? customerView === "completed" ? "Delivered tailoring orders will be kept here for easy reference." : customerView === "closed" ? "Orders cancelled by you or rejected by a vendor will appear here." : "Open a published design and choose Order design to place your first tailoring order. Shop purchases appear above." : "New made-to-measure orders will appear here automatically."}</p></section>
       ) : visibleOrders.length === 0 ? (
         <section className="empty-state"><Search size={38} /><h2>No matching orders</h2><p>Try a different search or status filter.</p></section>
@@ -265,6 +268,7 @@ const Orders = ({ mode = "purchases" }: { mode?: "purchases" | "sales" }) => {
           {visibleOrders.map((order) => {
             const expanded = expandedOrders.has(order.id)
             const hasInvoice = Boolean(order.invoice) || order.order_items.some((item) => item.invoice)
+            const awaitingQuote = !hasInvoice && order.order_items.some((item) => item.design.is_custom_request_template)
             const invoiceAccepted = order.invoice?.status === "approved" || order.order_items.some((item) => item.invoice?.status === "approved")
             const customerCanCancel = isBuyerView && order.customer.id === profile?.id
               && !invoiceAccepted
@@ -273,7 +277,7 @@ const Orders = ({ mode = "purchases" }: { mode?: "purchases" | "sales" }) => {
               <article className={`order-card ${expanded ? "is-expanded" : ""}`} key={order.id}>
                 <button aria-expanded={expanded} className="order-card-toggle" onClick={() => toggleOrder(order.id)} type="button">
                   <span className="order-card-identity"><span><b className="order-number">Order #{order.id}</b><span className={`order-status status-${order.status}`}>{statusLabels[order.status]}</span></span><small><CalendarDays size={14} /> {new Date(order.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}{(isVendorSales || isAdmin) && <> · <UserRound size={14} /> {order.customer.full_name}</>}</small></span>
-                  <span className="order-card-total"><small>{hasInvoice ? "Current quoted total" : order.combined_order ? "Items + one delivery" : "Tailoring service"}</small><strong>₹{order.total_amount.toLocaleString("en-IN")}</strong></span>
+                  <span className="order-card-total">{awaitingQuote ? <><small>Custom tailoring</small><strong>Awaiting vendor quote</strong><small>Final total not yet confirmed</small></> : <><small>{hasInvoice ? "Current quoted total" : order.combined_order ? "Items + one delivery" : "Tailoring service"}</small><strong>₹{order.total_amount.toLocaleString("en-IN")}</strong></>}</span>
                   <span className="open-order-button">{expanded ? "Close" : "Open order"}{expanded ? <ChevronUp size={17} /> : <ChevronDown size={17} />}</span>
                 </button>
 
@@ -293,16 +297,13 @@ const Orders = ({ mode = "purchases" }: { mode?: "purchases" | "sales" }) => {
                       {order.tracking_number && <span><Truck size={15} /> {order.tracking_number}</span>}
                     </div>
 
-                    {isBuyerView && (
-                      <div className={`order-cancellation-bar ${customerCanCancel ? "" : "is-locked"}`}>
-                        <div><XCircle size={18} /><span><strong>{customerCanCancel ? "Need to cancel?" : order.status === "cancelled" ? "Order cancelled" : invoiceAccepted ? "Cancellation locked" : "Cancellation unavailable"}</strong><small>{customerCanCancel ? "You can cancel before accepting any vendor invoice." : invoiceAccepted ? "An accepted invoice is a confirmed commitment and cannot be cancelled." : "This order can no longer be cancelled."}</small></span></div>
-                        {customerCanCancel && <button className="button button-secondary danger-text" onClick={() => setCancellingOrder(order)} type="button">Cancel order</button>}
-                      </div>
-                    )}
+
 
                     {isVendorSales && order.combined_order && order.status !== "cancelled" && order.invoice?.status !== "approved" && <div className="order-cancellation-bar"><div><XCircle size={18} /><span><strong>Cannot accept this combined order?</strong><small>Rejecting closes every design and product line and cancels the single delivery.</small></span></div><button className="button button-secondary danger-text" onClick={() => setRejectingOrder(order)} type="button">Reject order</button></div>}
 
                     {order.combined_order && <CombinedOrderInvoice onUpdated={replaceOrder} order={order} profile={profile} />}
+                    {isBuyerView && customerCanCancel && <div className="order-secondary-actions"><button className="button button-secondary" onClick={() => setCancellingOrder(order)} type="button">Cancel order</button><small>Available before accepting a vendor invoice.</small></div>}
+
 
                     {order.product_items.length > 0 && <section className="combined-product-lines"><header><Package size={19} /><div><strong>Products in this order</strong><small>Included in the single vendor invoice</small></div></header>{order.product_items.map((item) => <article key={item.id}><span className="order-summary-image">{item.product.image_url ? <ApiImage alt={item.product.title} src={item.product.image_url} /> : <Package size={18} />}</span><div><strong>{item.product.title}</strong><small>{item.quantity} {item.product.unit}{item.selected_size ? ` · ${item.selected_size}` : ""}</small></div><b>₹{item.merchandise_total.toLocaleString("en-IN")}</b><span className={`order-status status-${item.status}`}>{item.status}</span></article>)}</section>}
 

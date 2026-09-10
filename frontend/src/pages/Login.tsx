@@ -1,8 +1,10 @@
 import { useState } from "react"
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, Ruler, Scissors, Sparkles } from "lucide-react"
-import { Link, Navigate, useNavigate } from "react-router-dom"
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom"
 import toast from "react-hot-toast"
 import { api, getAccessToken, getCurrentUser, setSession } from "@/lib/api"
+
+import { loginDestination } from "@/lib/loginDestination"
 
 interface TokenResponse {
   access_token: string
@@ -14,12 +16,16 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const destination = loginDestination(params.get("next"))
+  const [error, setError] = useState("")
 
-  if (getAccessToken()) return <Navigate replace to="/" />
+  if (getAccessToken()) return <Navigate replace to={destination} />
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
     setSubmitting(true)
+    setError("")
     try {
       const data = await api<TokenResponse>("/api/auth/login", {
         method: "POST",
@@ -28,9 +34,9 @@ const Login = () => {
       setSession(data.access_token)
       const profile = await getCurrentUser(true)
       toast.success("Welcome back")
-      navigate(profile.role === "delivery_agent" ? "/delivery-agent" : "/")
+      navigate(profile.role === "delivery_agent" ? "/delivery-agent" : destination, { replace: true })
     } catch (error) {
-      toast.error((error as Error).message)
+      setError((error as Error).message)
     } finally {
       setSubmitting(false)
     }
@@ -68,6 +74,7 @@ const Login = () => {
             <p>Your saved fits and favorite designs are waiting.</p>
           </div>
           <form onSubmit={handleSubmit}>
+            {error && <p role="alert" className="garment-field-error">{error}</p>}
             <div className="field">
               <label htmlFor="email">Email address</label>
               <div className="input-with-icon">

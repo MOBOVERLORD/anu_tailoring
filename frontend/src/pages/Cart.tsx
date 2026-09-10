@@ -27,17 +27,21 @@ const Cart = () => {
   const [addressId, setAddressId] = useState("")
   const [quote, setQuote] = useState<DeliveryQuote | null>(null)
   const [fulfilmentMethod, setFulfilmentMethod] = useState<FulfilmentChoice>("home_delivery")
+  const [addressError, setAddressError] = useState("")
+  const [addressRetry, setAddressRetry] = useState(0)
   const [loadingAddresses, setLoadingAddresses] = useState(true)
   const [quoting, setQuoting] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
+    setLoadingAddresses(true)
+    setAddressError("")
     api<DeliveryAddress[]>("/api/addresses").then((items) => {
       setAddresses(items)
       const preferred = items.find((item) => item.is_default) || items[0]
       setAddressId(preferred ? String(preferred.id) : "")
-    }).catch((error: Error) => toast.error(error.message)).finally(() => setLoadingAddresses(false))
-  }, [])
+    }).catch((error: Error) => setAddressError(error.message)).finally(() => setLoadingAddresses(false))
+  }, [addressRetry])
 
   useEffect(() => { setQuote(null) }, [addressId, cart.lines, fulfilmentMethod])
 
@@ -93,9 +97,10 @@ const Cart = () => {
           <button className={fulfilmentMethod === "customer_self_delivery" ? "is-active" : ""} onClick={() => setFulfilmentMethod("customer_self_delivery")} type="button"><PackageCheck size={18} /><span><strong>Self-delivery</strong><small>I arrange transport · ₹0</small></span></button>
           <button className={fulfilmentMethod === "customer_self_pickup" ? "is-active" : ""} onClick={() => setFulfilmentMethod("customer_self_pickup")} type="button"><Store size={18} /><span><strong>Self-pickup</strong><small>I collect it · ₹0</small></span></button>
         </fieldset>
-        <div className="field"><label htmlFor="cart-address"><MapPin size={14} /> {fulfilmentMethod === "customer_self_pickup" ? "Contact address for this order" : "Address for the complete order"}</label>{loadingAddresses ? <span>Loading addresses…</span> : addresses.length ? <AppSelect id="cart-address" onValueChange={setAddressId} options={addresses.map((address) => ({ value: String(address.id), label: `${address.recipient_name} · ${address.street_address}` }))} value={addressId} /> : <Link className="button button-secondary button-wide" to="/profile?section=addresses">Add address</Link>}</div>
+        <div className="field"><label htmlFor="cart-address"><MapPin size={14} /> {fulfilmentMethod === "customer_self_pickup" ? "Contact address for this order" : "Address for the complete order"}</label>{loadingAddresses ? <span>Loading addresses…</span> : addressError ? <div><p role="alert">{addressError}</p><button className="button button-secondary" type="button" onClick={() => setAddressRetry((value) => value + 1)}>Retry addresses</button></div> : addresses.length ? <AppSelect id="cart-address" onValueChange={setAddressId} options={addresses.map((address) => ({ value: String(address.id), label: `${address.recipient_name} · ${address.street_address}` }))} value={addressId} /> : <Link className="button button-secondary button-wide" to="/profile?section=addresses">Add address</Link>}</div>
         <div className="cart-costs"><span><small>Tailoring services</small><strong>{money(serviceSubtotal)}{hasCustomPrice && " + quote"}</strong></span><span><small>Products</small><strong>{money(merchandiseSubtotal)}</strong></span><span className="delivery-once"><small><Truck size={15} /> {quote ? fulfilmentCopy[quote.fulfilment_method].label : "Fulfilment"} <b>{quote ? fulfilmentCopy[quote.fulfilment_method].summary : "charged once"}</b></small><strong>{quote ? money(quote.delivery_cost) : "Confirm"}</strong></span>{quote?.maps_provider !== "not_required" && quote && <MapAttribution provider={quote.maps_provider} />}</div>
-        {!quote ? <button className="button button-wide" disabled={!addressId || quoting} onClick={calculateDelivery} type="button">{quoting ? <LoaderCircle className="spin" size={17} /> : <Truck size={17} />} Confirm fulfilment</button> : <><div className="cart-total"><span><small>{hasCustomPrice ? "Current total; custom service added to invoice" : "Order total"}</small>Total</span><strong>{money(serviceSubtotal + merchandiseSubtotal + quote.delivery_cost)}</strong></div><button className="button button-wide" disabled={submitting} onClick={checkout} type="button">{submitting ? <LoaderCircle className="spin" size={17} /> : <PackageCheck size={17} />} Place order</button></>}
+        {!quote ? <button className="button button-wide" disabled={!addressId || quoting} onClick={calculateDelivery} type="button">{quoting ? <LoaderCircle className="spin" size={17} /> : <Truck size={17} />} Confirm fulfilment</button> : <><div className="cart-total"><span><small>{hasCustomPrice ? "Custom tailoring not included yet" : "Order total"}</small>{hasCustomPrice ? "Subtotal so far" : "Total"}</span><strong>{money(serviceSubtotal + merchandiseSubtotal + quote.delivery_cost)}</strong></div><button className="button button-wide" disabled={submitting} onClick={checkout} type="button">{submitting ? <LoaderCircle className="spin" size={17} /> : <PackageCheck size={17} />} Place order</button></>}
+        {hasCustomPrice && <p className="cart-security-note">Next: the vendor reviews your request and sends a quote for you to approve before payment.</p>}
         <p className="cart-security-note">Stock is reserved when you place the order. The fulfilment choice and any fee are locked once for every item in this vendor order.</p>
       </aside>
     </div>
