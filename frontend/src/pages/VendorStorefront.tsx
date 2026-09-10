@@ -101,7 +101,7 @@ const VendorStorefront = () => {
         </div>
         <div className="vendor-storefront-actions">
           {!ownShop && <button aria-pressed={vendor.is_favorite} className={`button button-secondary ${vendor.is_favorite ? "design-favorite-active" : ""}`} onClick={toggleVendorFavorite} type="button"><Heart fill={vendor.is_favorite ? "currentColor" : "none"} size={17} /> {vendor.is_favorite ? "Saved vendor" : "Save vendor"}</button>}
-          {!ownShop && vendor.accepts_custom_orders && <button className="button button-primary" disabled={requesting} onClick={beginCustomOrder} type="button">{requesting ? <LoaderCircle className="spin" size={17} /> : <MessageSquareText size={17} />} Custom order</button>}
+          {!ownShop && <div className="custom-order-availability"><button className="button button-primary" aria-describedby={!vendor.accepts_custom_orders ? "custom-order-unavailable" : undefined} disabled={requesting || !vendor.accepts_custom_orders} onClick={beginCustomOrder} type="button">{requesting ? <LoaderCircle className="spin" size={17} /> : <MessageSquareText size={17} />} Custom order</button>{!vendor.accepts_custom_orders && <small id="custom-order-unavailable">Unavailable · Vendor pickup setup pending</small>}</div>}
           {ownShop && <Link className="button button-primary" to="/profile?section=shop"><Store size={17} /> Manage your shop</Link>}
         </div>
       </section>

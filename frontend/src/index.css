@@ -10482,6 +10482,8 @@ a.map-attribution {
 .garment-cards { display: grid; gap: 12px; padding: 20px 24px 12px; }
 .garment-card { border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
 .garment-card.is-open { border-color: var(--brand); }
+.custom-order-availability { display: grid; gap: 6px; min-width: 0; }
+.custom-order-availability small { color: var(--text-soft); font-size: 12px; line-height: 1.4; max-width: 240px; }
 .garment-summary-image { width: 44px; height: 52px; object-fit: contain; border-radius: 6px; flex-shrink: 0; background: var(--surface); }
 .garment-field-error { color: var(--danger, #b42318); }
 .custom-composer [aria-invalid="true"] { border-color: var(--danger, #b42318); }
