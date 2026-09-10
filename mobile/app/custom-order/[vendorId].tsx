@@ -2,6 +2,7 @@ import { useCallback, useState } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import { MessageSquareText, PackageCheck, Ruler } from "lucide-react-native"
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router"
+import { CustomOrderComposer } from "@/components/CustomOrderComposer"
 import { CustomOrderReferences } from "@/components/CustomOrderReferences"
 import { api } from "@/lib/api"
 import type { DeliveryAddress, Design, MeasurementProfile, Order, VendorDirectoryItem } from "@/types/api"
@@ -9,6 +10,11 @@ import { AppButton, EmptyState, ErrorState, Field, LoadingState, PageHeader, Scr
 import { useTheme } from "@/theme/theme"
 
 export default function CustomOrderScreen() {
+  const { vendorId, designId } = useLocalSearchParams<{ vendorId: string; designId?: string }>()
+  return designId ? <SingleDesignOrderScreen /> : <CustomOrderComposer key={vendorId} vendorId={vendorId} />
+}
+
+function SingleDesignOrderScreen() {
   const { vendorId, designId } = useLocalSearchParams<{ vendorId: string; designId?: string }>()
   const router = useRouter(); const { colors } = useTheme()
   const [vendor, setVendor] = useState<VendorDirectoryItem | null>(null); const [measurements, setMeasurements] = useState<MeasurementProfile[]>([]); const [addresses, setAddresses] = useState<DeliveryAddress[]>([]); const [measurementId, setMeasurementId] = useState<number | null>(null); const [addressId, setAddressId] = useState<number | null>(null); const [clothSource, setClothSource] = useState<"customer_provided" | "vendor_supplied">("customer_provided"); const [fulfilment, setFulfilment] = useState<"home_delivery" | "customer_self_pickup">("home_delivery"); const [instructions, setInstructions] = useState(""); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false); const [error, setError] = useState("")

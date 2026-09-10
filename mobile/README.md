@@ -6,6 +6,15 @@ backend. No backend secret belongs in this directory.
 
 ## What is implemented
 
+- Native custom-order batch composer: collapsible garment cards, one vendor
+  design/photo per garment, quantity with per-piece measurement selection,
+  reuse-first-measurement shortcut, inline validation, removal with Undo,
+  visible vendor-cloth colour, optional fabric, and a 20-piece counter.
+  A separate review step precedes submission (native has no shared cart).
+  Drafts remain in screen memory while visiting measurement/address editors;
+  they are not persisted after leaving the screen or restarting the app.
+  iOS/Android device QA for the new flow, photo picker and keyboard remains pending.
+
 - Customer registration, login, password-reset request, secure session restore,
   rotating device-bound refresh tokens, automatic refresh, and logout.
 - Light/dark native design system, designs/products discovery, vendor directory,

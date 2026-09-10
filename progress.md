@@ -1451,3 +1451,8 @@ the next implementation milestone. Existing order invoicing is unaffected.
 - Profile network failures now offer Retry instead of redirecting to login; cart address failures no longer masquerade as missing addresses; orders failures no longer appear as an empty history.
 - Custom-order cart totals now say Subtotal so far and explain the quote-approval next step.
 - Build/lint and five focused tests passed; existing bundle/Fast Refresh warnings unchanged. Browser end-to-end validation remains pending. Account-scoped cart recovery, draft resumption across measurement editing, filter/scroll preservation and broader profile edit guards are not implemented in this pass.
+## 2026-09-10 — Native custom-order UX parity
+
+- Added iOS/Android custom composer with multi-garment accordion cards, selected-reference previews, scrollable visual vendor catalog, single design/photo per garment, quantity and explicit per-piece fits, reuse-fit shortcut, inline validation, colour/fabric preferences, header removal with Undo, compact 20-piece limit, and safe-area-aware persistent review/submit action.
+- Native has no shared cart: batch goes through Review order then one order submission, with separate API item per measured piece. Existing regular-design route retained. Vendor page now explains unavailable custom orders when pickup setup is missing.
+- Mobile TypeScript and Expo config checks passed. Three pure draft tests passed for quantity, per-piece mapping, colour/reference isolation and invalid batches. No new dependencies or backend schema changes. No real order or photo submitted. Native builds and simulator/device visual, permission, keyboard and end-to-end testing remain pending.
